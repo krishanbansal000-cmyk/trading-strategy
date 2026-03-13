@@ -53,6 +53,14 @@ const YAHOO_PROXY_URLS = [
     (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(`https://${url}`)}`
 ];
 
+const TIMING_WINDOW_GUIDANCE = `TIMING WINDOW RULES:
+- Treat all planetary dates as timing windows, not exact timestamps.
+- Assume market sentiment can shift 1-3 trading sessions before the listed planetary date.
+- For bearish windows, it is acceptable to reduce longs or sell partial positions 1-2 sessions early if price action is already weakening.
+- For bullish windows, it is acceptable to accumulate 1-2 sessions early if price action is stabilizing or turning up.
+- Never present the date itself as a guaranteed first-move day; describe it as the center of the turn window.
+- Always mention that early action is stronger when confirmed by price, volume, or momentum.`;
+
 // ========== BOOK CONTEXTS ==========
 const BOOKS = {
     general: {
@@ -73,15 +81,21 @@ COMMODITY ASSOCIATIONS:
 
 USER'S CHART: Born Aug 29 2000, 9:39PM IST, Gurugram. Jupiter in Taurus 2nd house = wealth. Venus debilitated = caution with copper.
 
+${TIMING_WINDOW_GUIDANCE}
+
 Be positive, helpful, and provide specific actionable advice. Always use correct ETF names.`
     },
     gann: {
         name: 'W.D. Gann Methods',
-        context: `Expert in W.D. Gann trading methods: time cycles (30/90 day), price squares, geometric angles. "Time is more important than price." Anniversary dates of highs/lows are key. Apply to current commodity markets.`
+        context: `Expert in W.D. Gann trading methods: time cycles (30/90 day), price squares, geometric angles. "Time is more important than price." Anniversary dates of highs/lows are key. Apply to current commodity markets.
+
+${TIMING_WINDOW_GUIDANCE}`
     },
     vedic: {
         name: 'Vedic Astrology',
-        context: `Vedic astrology expert: Wealth nakshatras (Rohini, Hasta, Shravana), planetary dashas, muhurta timing. User has Jupiter in 2nd house = excellent wealth potential.`
+        context: `Vedic astrology expert: Wealth nakshatras (Rohini, Hasta, Shravana), planetary dashas, muhurta timing. User has Jupiter in 2nd house = excellent wealth potential.
+
+${TIMING_WINDOW_GUIDANCE}`
     },
     personal: {
         name: 'Your Birth Chart',
@@ -96,7 +110,9 @@ KEY POSITIONS:
 RECOMMENDATIONS:
 - Best: Gold (Sun strong in Leo), Silver (Jupiter aspects)
 - Caution: Copper (Venus debilitated in natal chart)
-- Super bullish periods: When transits activate 2nd house`
+- Super bullish periods: When transits activate 2nd house
+
+${TIMING_WINDOW_GUIDANCE}`
     }
 };
 
@@ -120,6 +136,8 @@ KEY DATES:
 
 USER FIT: Excellent (Sun in Leo in birth chart = strong gold affinity)
 
+${TIMING_WINDOW_GUIDANCE}
+
 Provide specific gold trading advice. Be positive and actionable.`
     },
     silver: {
@@ -141,6 +159,8 @@ KEY DATES:
 
 VERIFIED PERFORMANCE: +4.90% returns (Mar 5-11, 2026), 100% trend accuracy
 
+${TIMING_WINDOW_GUIDANCE}
+
 Provide specific silver trading advice.`
     },
     copper: {
@@ -158,6 +178,8 @@ CRITICAL DATES:
 
 USER NOTE: Venus debilitated in birth chart = extra caution with copper.
 
+${TIMING_WINDOW_GUIDANCE}
+
 Provide encouraging advice about holding and recovering losses.`
     },
     bitcoin: {
@@ -172,6 +194,8 @@ CURRENT STATUS:
 KEY FACTOR: Rahu in Aquarius (Jan 2025 - Jun 2026) = OWN SIGN = SUPER BULLISH for crypto!
 
 EXIT SIGNAL: June 2026 when Rahu exits Aquarius. Reduce 50%+ before transit.
+
+${TIMING_WINDOW_GUIDANCE}
 
 Provide positive, encouraging Bitcoin advice.`
     }
