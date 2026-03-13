@@ -295,7 +295,7 @@ async function fetchCoinCap() {
 // ========== REFRESH ALL DATA ==========
 async function refreshAllData() {
     const btn = document.querySelector('.refresh-btn');
-    if (btn) btn.innerHTML = '⏳';
+    if (btn) btn.classList.add('loading');
     
     try {
         // Gold (Tata Gold ETF - NSE)
@@ -329,7 +329,7 @@ async function refreshAllData() {
             }
             
             const currEl = document.getElementById('copper-pos-current');
-            if (currEl) currEl.textContent = `₹${copperData.price}`;
+            if (currEl) currEl.textContent = copperData.price;
             
             state.priceHistory.copper.push({ time: Date.now(), price: parseFloat(copperData.price) });
         }
@@ -359,25 +359,30 @@ async function refreshAllData() {
         console.error('Refresh error:', e);
     }
     
-    if (btn) btn.innerHTML = '🔄';
+    if (btn) btn.classList.remove('loading');
 }
 
 function updatePriceUI(commodity, price, change, prefix = '₹') {
     // Handle BTC special case
     const priceId = commodity === 'btc' ? 'price-btc' : `price-${commodity}`;
     const changeId = commodity === 'btc' ? 'change-btc' : `change-${commodity}`;
+    const badgeEl = document.getElementById(`${commodity === 'btc' ? 'btc' : commodity}-badge`);
     
     // Main price cards
     const priceEl = document.getElementById(priceId);
     const changeEl = document.getElementById(changeId);
-    const badgeEl = document.getElementById(`${commodity === 'btc' ? 'btc' : commodity}-badge`);
     
     if (priceEl) priceEl.textContent = `${prefix}${price}`;
     if (changeEl) {
-        changeEl.textContent = change;
-        changeEl.className = `change ${parseFloat(change) >= 0 ? 'up' : 'down'}`;
+        const changeNum = parseFloat(change);
+        changeEl.textContent = `${changeNum >= 0 ? '+' : ''}${change}`;
+        changeEl.className = `change ${changeNum >= 0 ? 'up' : 'down'}`;
     }
-    if (badgeEl) badgeEl.textContent = change;
+    if (badgeEl) {
+        const changeNum = parseFloat(change);
+        badgeEl.textContent = `${changeNum >= 0 ? '+' : ''}${change}`;
+        badgeEl.className = `badge ${changeNum >= 0 ? 'up' : 'down'}`;
+    }
     
     // Detail views
     const detailPriceEl = document.getElementById(`${commodity}-detail-price`);
@@ -385,8 +390,9 @@ function updatePriceUI(commodity, price, change, prefix = '₹') {
     
     if (detailPriceEl) detailPriceEl.textContent = `${prefix}${price}`;
     if (detailChangeEl) {
-        detailChangeEl.textContent = change;
-        detailChangeEl.className = `big-change ${parseFloat(change) >= 0 ? 'up' : 'down'}`;
+        const changeNum = parseFloat(change);
+        detailChangeEl.textContent = `${changeNum >= 0 ? '+' : ''}${change}`;
+        detailChangeEl.className = `big-change ${changeNum >= 0 ? 'up' : 'down'}`;
     }
 }
 
@@ -625,7 +631,7 @@ function addStreamingMessage(id) {
     const div = document.createElement('div');
     div.className = 'msg streaming';
     div.id = id;
-    div.innerHTML = '<span class="avatar">AI</span><p><span class="streaming-cursor">|</span></p>';
+    div.innerHTML = '<span class="avatar ai">AI</span><p><span class="streaming-cursor">|</span></p>';
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
 }
@@ -667,8 +673,9 @@ function addMessageToUI(role, content) {
     const div = document.createElement('div');
     div.className = `msg ${role === 'user' ? 'user' : ''}`;
     
-    const avatar = role === 'user' ? 'You' : 'AI';
-    div.innerHTML = `<span class="avatar">${avatar}</span><p>${formatContent(content)}</p>`;
+    const avatarClass = role === 'user' ? 'avatar' : 'avatar ai';
+    const avatarText = role === 'user' ? 'You' : 'AI';
+    div.innerHTML = `<span class="${avatarClass}">${avatarText}</span><p>${formatContent(content)}</p>`;
     
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
@@ -738,5 +745,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Auto-refresh every hour
     setInterval(refreshAllData, CONFIG.refreshInterval);
     
-    console.log('🌟 Astro Trading Dashboard ready');
+    console.log('Astro Trading Dashboard ready');
 });
+
+// ========== MOBILE TOGGLES ==========
+function toggleSidebar() {
+    document.querySelector('.sidebar').classList.toggle('open');
+    document.querySelector('.chat-panel').classList.remove('open');
+}
+
+function toggleChat() {
+    document.querySelector('.chat-panel').classList.toggle('open');
+    document.querySelector('.sidebar').classList.remove('open');
+}
