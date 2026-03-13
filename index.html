@@ -520,13 +520,16 @@
                 <option value="personal">Your Birth Chart</option>
             </select>
         </div>
-        <div class="chat-toolbar">
-            <button type="button" class="chat-tool-btn" onclick="startNewChat()">New chat</button>
-            <button type="button" class="chat-tool-btn" onclick="createNewThread()">New thread</button>
-            <button type="button" class="chat-tool-btn danger" onclick="deleteCurrentThread()">Delete thread</button>
-        </div>
         <div class="thread-row">
-            <label class="thread-label" for="thread-select">Thread</label>
+            <div class="thread-row-top">
+                <label class="thread-label" for="thread-select">Thread</label>
+                <select class="thread-actions" aria-label="Thread actions" onchange="handleThreadAction(this.value)">
+                    <option value="">Manage</option>
+                    <option value="new-chat">New chat</option>
+                    <option value="new-thread">New thread</option>
+                    <option value="delete-thread">Delete thread</option>
+                </select>
+            </div>
             <select id="thread-select" class="thread-select" onchange="switchThread(this.value)"></select>
         </div>
         <div class="chat-messages" id="chat-messages"></div>

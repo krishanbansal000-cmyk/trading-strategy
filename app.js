@@ -915,6 +915,15 @@ function createNewThread() {
     document.getElementById('chat-input')?.focus();
 }
 
+function handleThreadAction(action) {
+    if (!action) return;
+    if (action === 'new-chat') startNewChat();
+    if (action === 'new-thread') createNewThread();
+    if (action === 'delete-thread') deleteCurrentThread();
+    const actions = document.querySelector('.thread-actions');
+    if (actions) actions.value = '';
+}
+
 function switchThread(threadId) {
     const scopeStore = ensureScopeStore();
     if (!scopeStore.threads.some(thread => thread.id === threadId)) return;
