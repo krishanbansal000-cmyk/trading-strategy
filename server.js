@@ -51,6 +51,16 @@ const COMMODITY_GUIDANCE = {
 const shellSessions = new Map();
 
 const app = express();
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  return next();
+});
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(ROOT));
 
@@ -179,16 +189,22 @@ function buildContextBlock({
 
 async function getMarketSnapshot(commodity, days = 10) {
   if (commodity === 'bitcoin') {
-    const json = await fetchJson('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true');
+    const market = await fetchBitcoinMarketSnapshot();
     const history = await fetchCommodityHistory(commodity, days);
-    const price = json.bitcoin?.usd;
-    const change = json.bitcoin?.usd_24h_change;
+    const latest = Number.isFinite(Number(market.price))
+      ? Number(market.price)
+      : history.length
+        ? history[history.length - 1]?.close
+        : 0;
+    const change = Number.isFinite(Number(market.change24h))
+      ? Number(market.change24h)
+      : (history.length > 1 ? ((latest - history[history.length - 2].close) / history[history.length - 2].close) * 100 : 0);
     return {
-      price,
+      price: latest,
       change,
       recentSeries: history.slice(-days),
       seriesSummary: formatSeriesSummary(history.slice(-days), '$'),
-      summary: `Bitcoin: $${Number(price || 0).toLocaleString()} (${Number(change || 0).toFixed(2)}% 24h)`
+      summary: `Bitcoin: $${Number(latest || 0).toLocaleString()} (${Number(change || 0).toFixed(2)}% 24h)`
     };
   }
 
@@ -348,11 +364,7 @@ function scoreText(text, terms, commodity, book) {
 
 async function fetchCommodityHistory(commodity, lookbackDays) {
   if (commodity === 'bitcoin') {
-    const json = await fetchJson(`https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=${Math.max(7, lookbackDays)}&interval=daily`);
-    return (json.prices || []).map(([timestamp, close]) => ({
-      date: new Date(timestamp).toISOString().slice(0, 10),
-      close: Number(close)
-    }));
+    return fetchBitcoinHistory(lookbackDays);
   }
 
   const symbol = COMMODITY_TO_SYMBOL[commodity];
@@ -361,6 +373,47 @@ async function fetchCommodityHistory(commodity, lookbackDays) {
     date: point.date,
     close: point.close
   }));
+}
+
+async function fetchBitcoinMarketSnapshot() {
+  try {
+    const json = await fetchJson('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true');
+    return {
+      price: json.bitcoin?.usd,
+      change24h: json.bitcoin?.usd_24h_change
+    };
+  } catch (error) {
+    const points = await fetchBitcoinHistory(5);
+    if (!points.length) throw error;
+    const latest = points[points.length - 1]?.close;
+    const previous = points[points.length - 2]?.close;
+    return {
+      price: latest,
+      change24h: Number.isFinite(latest) && Number.isFinite(previous) && previous !== 0
+        ? ((latest - previous) / previous) * 100
+        : 0
+    };
+  }
+}
+
+async function fetchBitcoinHistory(lookbackDays) {
+  const days = Math.max(7, lookbackDays);
+  try {
+    const json = await fetchJson(`https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=${days}&interval=daily`);
+    const history = (json.prices || [])
+      .map(([timestamp, close]) => ({
+        date: new Date(timestamp).toISOString().slice(0, 10),
+        close: Number(close)
+      }))
+      .filter(point => Number.isFinite(point.close))
+      .slice(-days);
+    if (history.length) return history;
+  } catch (error) {
+    // Fallback to Yahoo BTC history when CoinGecko chart endpoint fails.
+  }
+
+  const payload = await fetchYahooChart('BTC-USD', days);
+  return payload.points;
 }
 
 async function fetchYahooChart(symbol, lookbackDays) {

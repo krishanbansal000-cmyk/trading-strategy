@@ -826,6 +826,53 @@ body {
     min-width: 42px;
 }
 
+.agent-url-row {
+    display: none;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.agent-url-row.active {
+    display: flex;
+}
+
+.agent-url-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.35rem;
+}
+
+.agent-url-input {
+    width: 100%;
+    min-width: 0;
+    padding: 0.5rem 0.65rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.76rem;
+}
+
+.agent-url-input:focus {
+    outline: none;
+    border-color: var(--gold);
+}
+
+.agent-url-save {
+    padding: 0.45rem 0.7rem;
+    background: var(--gold-dim);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    border-radius: 8px;
+    color: var(--gold);
+    font-size: 0.74rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.agent-url-save:hover {
+    border-color: var(--gold);
+}
+
 .thread-row-top {
     display: flex;
     align-items: center;

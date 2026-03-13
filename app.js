@@ -18,6 +18,17 @@ const CONFIG = {
     refreshInterval: 3600000
 };
 
+function getDefaultAgentUrl() {
+    const saved = localStorage.getItem('agentUrl');
+    if (saved) return saved;
+    const queryValue = new URLSearchParams(window.location.search).get('agent_url');
+    if (queryValue) return queryValue;
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return '/api/agent/stream';
+    }
+    return '';
+}
+
 const ANALYSIS_FILES = {
     gold: 'gold_analysis_2026-03-13.md',
     silver: 'silver_analysis_2026-03-13.md',
@@ -174,7 +185,8 @@ const state = {
     chatStore: {},
     priceHistory: { gold: [], silver: [], copper: [], bitcoin: [] },
     isSending: false,
-    chatMode: localStorage.getItem('chatMode') || 'codex'
+    chatMode: localStorage.getItem('chatMode') || 'codex',
+    agentUrl: getDefaultAgentUrl()
 };
 
 // ========== NAVIGATION ==========
@@ -219,7 +231,32 @@ function setChatMode(mode) {
     localStorage.setItem('chatMode', state.chatMode);
     const select = document.getElementById('chat-mode-select');
     if (select && select.value !== state.chatMode) select.value = state.chatMode;
+    updateAgentUrlUI();
     setAgentStatus(state.chatMode === 'codex' ? 'Codex ready' : 'Z.ai ready');
+}
+
+function updateAgentUrlUI() {
+    const row = document.getElementById('agent-url-row');
+    const input = document.getElementById('agent-url-input');
+    if (input && input.value !== state.agentUrl) input.value = state.agentUrl;
+    if (!row) return;
+    const show = state.chatMode === 'codex' && window.location.hostname.includes('github.io');
+    row.classList.toggle('active', show);
+}
+
+function saveAgentUrl() {
+    const input = document.getElementById('agent-url-input');
+    if (!input) return;
+    const value = input.value.trim().replace(/\/+$/, '');
+    state.agentUrl = value;
+    if (value) {
+        localStorage.setItem('agentUrl', value);
+        setAgentStatus('Codex backend saved');
+    } else {
+        localStorage.removeItem('agentUrl');
+        setAgentStatus('Codex backend cleared');
+    }
+    updateAgentUrlUI();
 }
 
 function applyChatWidth(width) {
@@ -1178,7 +1215,7 @@ async function sendChat() {
             const message = String(agentError?.message || '');
             const isStaticDeploy = window.location.hostname.includes('github.io');
             const codexError = (isStaticDeploy || message.includes('(405)'))
-                ? '⚠️ Codex mode requires a real backend server. This GitHub Pages deployment returns 405 for POST /api/agent/stream, so Codex cannot run here. Run the app with `npm start` or deploy `server.js` on a real host.'
+                ? `⚠️ Codex mode requires a real backend server. This GitHub Pages deployment cannot handle POST /api/agent/stream. Add your backend URL above, or run the app with \`npm start\`. Current backend: ${state.agentUrl || 'not set'}.`
                 : `⚠️ ${message || 'Codex backend unavailable.'}`;
             addMessageToUI('assistant', codexError);
             state.isSending = false;
@@ -1313,7 +1350,11 @@ async function sendChat() {
 async function sendChatViaAgent({ msg, history, thread, streamingMsgId }) {
     const bookSelect = document.getElementById('book-select');
     const book = bookSelect?.value || 'general';
-    const response = await fetch(CONFIG.agent.url, {
+    const agentUrl = state.agentUrl || CONFIG.agent.url;
+    if (!agentUrl) {
+        throw new Error('Codex backend URL is not configured');
+    }
+    const response = await fetch(agentUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -1492,6 +1533,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateCountdowns();
     updateChatContext();
     setChatMode(state.chatMode);
+    updateAgentUrlUI();
     document.getElementById('book-select')?.addEventListener('change', () => {
         updateChatContext();
         renderCurrentChatHistory();

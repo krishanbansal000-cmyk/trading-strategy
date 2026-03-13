@@ -537,6 +537,13 @@
                     <option value="zai">Z.ai</option>
                 </select>
             </div>
+            <div class="agent-url-row" id="agent-url-row">
+                <label class="thread-label" for="agent-url-input">Backend</label>
+                <div class="agent-url-controls">
+                    <input type="url" id="agent-url-input" class="agent-url-input" placeholder="https://your-server.example.com/api/agent/stream">
+                    <button class="agent-url-save" onclick="saveAgentUrl()">Use</button>
+                </div>
+            </div>
             <select id="thread-select" class="thread-select" onchange="switchThread(this.value)"></select>
         </div>
         <div class="chat-messages" id="chat-messages"></div>
