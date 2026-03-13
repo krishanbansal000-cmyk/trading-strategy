@@ -31,8 +31,6 @@ body {
     background: var(--bg-primary);
     color: var(--text-primary);
     line-height: 1.5;
-    display: grid;
-    grid-template-columns: var(--sidebar-w) 1fr var(--chat-w);
     min-height: 100vh;
 }
 
