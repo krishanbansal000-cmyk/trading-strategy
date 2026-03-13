@@ -408,7 +408,7 @@ function initCharts() {
         }
     };
     
-    // Overview chart
+    // Overview chart (Tata Gold ETF ~₹58, Groww Silver ETF ~₹82)
     const ctxOverview = document.getElementById('overviewChart');
     if (ctxOverview) {
         state.charts.overview = new Chart(ctxOverview, {
@@ -416,20 +416,20 @@ function initCharts() {
             data: {
                 labels: getDayLabels(7),
                 datasets: [
-                    { label: 'Gold (₹)', data: randomData(7, 128, 135), borderColor: '#FFD700', backgroundColor: 'rgba(255,215,0,0.1)', tension: 0.3, fill: true },
-                    { label: 'Silver (₹)', data: randomData(7, 242, 255), borderColor: '#C0C0C0', backgroundColor: 'rgba(192,192,192,0.1)', tension: 0.3, fill: true }
+                    { label: 'Gold (₹)', data: randomData(7, 55, 62), borderColor: '#FFD700', backgroundColor: 'rgba(255,215,0,0.1)', tension: 0.3, fill: true },
+                    { label: 'Silver (₹)', data: randomData(7, 78, 86), borderColor: '#C0C0C0', backgroundColor: 'rgba(192,192,192,0.1)', tension: 0.3, fill: true }
                 ]
             },
             options: chartOptions
         });
     }
     
-    // Individual charts
+    // Individual charts (price ranges for Tata Gold ETF, Groww Silver ETF)
     const configs = {
-        gold: { color: '#FFD700', range: [128, 135] },
-        silver: { color: '#C0C0C0', range: [242, 255] },
-        copper: { color: '#CD7F32', range: [495, 525] },
-        bitcoin: { color: '#F7931A', range: [68000, 74000] }
+        gold: { color: '#FFD700', range: [55, 62] },
+        silver: { color: '#C0C0C0', range: [78, 86] },
+        copper: { color: '#CD7F32', range: [490, 520] },
+        bitcoin: { color: '#F7931A', range: [70000, 75000] }
     };
     
     Object.keys(configs).forEach(key => {
