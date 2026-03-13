@@ -380,11 +380,14 @@ body {
     height: 320px;
     width: 100%;
     position: relative;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .chart-wrapper canvas {
     width: 100% !important;
-    height: 100% !important;
+    height: 280px !important;
+    display: block;
 }
 
 /* ========== STATS GRID ========== */

@@ -758,6 +758,13 @@ document.addEventListener('DOMContentLoaded', () => {
     updateCountdowns();
     updateChatContext();
     
+    // Fix chart sizing after a short delay
+    setTimeout(() => {
+        Object.values(state.charts).forEach(chart => {
+            if (chart) chart.resize();
+        });
+    }, 100);
+    
     // Auto-refresh every hour
     setInterval(refreshAllData, CONFIG.refreshInterval);
     
