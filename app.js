@@ -15,8 +15,8 @@ const CONFIG = {
 
 // ETF Symbols on NSE
 const ETF_SYMBOLS = {
-    gold: ['TATAGOLDETF.NS', 'TATAGOLD.NS'],      // Tata Gold ETF
-    silver: ['GROWWSILVER.NS', 'GROWWSLVR.NS'],   // Groww Silver ETF  
+    gold: ['TATAGOLD.NS', 'TATAGOLDETF.NS'],      // Tata Gold ETF
+    silver: ['GROWWSLVR.NS', 'GROWWSILVER.NS'],   // Groww Silver ETF
     copper: ['HINDCOPPER.NS', 'HINDCOPPER.BO']   // Hindustan Copper
 };
 
@@ -159,8 +159,9 @@ const state = {
     currentView: 'overview',
     prices: { gold: {}, silver: {}, copper: {}, bitcoin: {} },
     charts: {},
-    chatHistory: [],
-    priceHistory: { gold: [], silver: [], copper: [], bitcoin: [] }
+    chatStore: {},
+    priceHistory: { gold: [], silver: [], copper: [], bitcoin: [] },
+    isSending: false
 };
 
 // ========== NAVIGATION ==========
@@ -178,17 +179,61 @@ function switchView(viewId) {
     
     // Update chat context indicator
     updateChatContext();
+    renderCurrentChatHistory();
 }
 
 function updateChatContext() {
     const indicator = document.getElementById('chat-context');
     if (!indicator) return;
-    
+    const bookSelect = document.getElementById('book-select');
+    const book = bookSelect?.value || 'general';
+    const bookName = BOOKS[book]?.name || BOOKS.general.name;
+
     if (state.currentView && COMMODITY_CONTEXT[state.currentView]) {
-        indicator.textContent = `📍 ${COMMODITY_CONTEXT[state.currentView].name}`;
+        indicator.textContent = `${COMMODITY_CONTEXT[state.currentView].name} · ${bookName}`;
     } else {
-        indicator.textContent = '';
+        indicator.textContent = `General market guidance · ${bookName}`;
     }
+}
+
+function buildChartLabels(points) {
+    if (!Array.isArray(points)) return getDayLabels(7);
+    return points.map(point => point.label || '');
+}
+
+function toChartPoints(prices, timestamps = []) {
+    return (prices || [])
+        .map((price, index) => {
+            const value = Number(price);
+            if (!Number.isFinite(value)) return null;
+            const rawTime = timestamps[index];
+            const label = rawTime
+                ? new Date(rawTime * 1000).toLocaleDateString('en-US', { weekday: 'short' })
+                : getDayLabels(prices.length)[index] || '';
+            return { label, price: value };
+        })
+        .filter(Boolean);
+}
+
+function toCoinGeckoChartPoints(prices) {
+    return (prices || [])
+        .map(entry => {
+            const timestamp = Array.isArray(entry) ? entry[0] : null;
+            const value = Array.isArray(entry) ? Number(entry[1]) : NaN;
+            if (!timestamp || !Number.isFinite(value)) return null;
+            return {
+                label: new Date(timestamp).toLocaleDateString('en-US', { weekday: 'short' }),
+                price: value
+            };
+        })
+        .filter(Boolean)
+        .filter((point, index, arr) => index === arr.findIndex(item => item.label === point.label))
+        .slice(-7);
+}
+
+function setPriceSeries(key, points) {
+    if (!Array.isArray(points) || !points.length) return;
+    state.priceHistory[key] = points.slice(-7);
 }
 
 // Initialize navigation
@@ -272,6 +317,7 @@ function normalizeYahooPayload(json, symbol) {
 
     const meta = result.meta || {};
     const closes = normalizeCloseArray(result.indicators?.quote?.[0]?.close || []);
+    const timestamps = result.timestamp || [];
     const currentPrice = Number(meta.regularMarketPrice || closes[closes.length - 1] || 0);
     const previousClose = Number(meta.previousClose || meta.chartPreviousClose || closes[closes.length - 2] || currentPrice);
 
@@ -283,7 +329,8 @@ function normalizeYahooPayload(json, symbol) {
         price: currentPrice.toFixed(2),
         change: change.toFixed(2),
         changePercent: `${change.toFixed(2)}%`,
-        prices: closes
+        prices: closes,
+        chartPoints: toChartPoints(closes, timestamps)
     };
 }
 
@@ -318,13 +365,25 @@ function normalizeAlphaPayload(json, symbol) {
         .slice(-7)
         .map(d => parseAlphaRowClose(timeSeries[d]))
         .filter(value => Number.isFinite(value));
+    const recentPoints = dates
+        .slice(-7)
+        .map(d => {
+            const value = parseAlphaRowClose(timeSeries[d]);
+            if (!Number.isFinite(value)) return null;
+            return {
+                label: new Date(d).toLocaleDateString('en-US', { weekday: 'short' }),
+                price: value
+            };
+        })
+        .filter(Boolean);
 
     return {
         symbol: json['Meta Data']?.['2. Symbol'] || symbol,
         price: latest.toFixed(2),
         change: change.toFixed(2),
         changePercent: `${change.toFixed(2)}%`,
-        prices: recentDateValues
+        prices: recentDateValues,
+        chartPoints: recentPoints
     };
 }
 
@@ -445,18 +504,20 @@ async function fetchCoinGecko() {
     }
     
     try {
-        // CoinGecko simple price API
-        const res = await fetch(
-            'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&include_7d_change=true&include_market_cap=true'
-        );
-        const json = await res.json();
-        
+        const [priceRes, chartRes] = await Promise.all([
+            fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&include_7d_change=true&include_market_cap=true'),
+            fetch('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=7&interval=daily')
+        ]);
+        const json = await priceRes.json();
+        const chartJson = await chartRes.json();
+
         if (json.bitcoin) {
             const data = {
                 price: json.bitcoin.usd,
                 change24h: json.bitcoin.usd_24h_change || 0,
                 change7d: json.bitcoin.usd_7d_change || 0,
-                marketCap: json.bitcoin.usd_market_cap || 0
+                marketCap: json.bitcoin.usd_market_cap || 0,
+                chartPoints: toCoinGeckoChartPoints(chartJson.prices)
             };
             localStorage.setItem(cacheKey, JSON.stringify({ data, time: Date.now() }));
             return data;
@@ -466,7 +527,12 @@ async function fetchCoinGecko() {
     }
     
     // Fallback
-    return { price: 71000, change24h: 2.5, change7d: 5 };
+    return {
+        price: 71000,
+        change24h: 2.5,
+        change7d: 5,
+        chartPoints: []
+    };
 }
 
 // Alternative: CoinCap API for Bitcoin (backup)
@@ -499,7 +565,7 @@ async function refreshAllData() {
         if (goldData) {
             state.prices.gold = { price: goldData.price, change: goldData.changePercent };
             updatePriceUI('gold', goldData.price, goldData.changePercent);
-            state.priceHistory.gold.push({ time: Date.now(), price: parseFloat(goldData.price) });
+            setPriceSeries('gold', goldData.chartPoints || []);
         }
         
         // Silver (Groww Silver ETF - NSE)
@@ -507,7 +573,7 @@ async function refreshAllData() {
         if (silverData) {
             state.prices.silver = { price: silverData.price, change: silverData.changePercent };
             updatePriceUI('silver', silverData.price, silverData.changePercent);
-            state.priceHistory.silver.push({ time: Date.now(), price: parseFloat(silverData.price) });
+            setPriceSeries('silver', silverData.chartPoints || []);
         }
         
         // Copper (Hindustan Copper - NSE)
@@ -527,7 +593,7 @@ async function refreshAllData() {
             const currEl = document.getElementById('copper-pos-current');
             if (currEl) currEl.textContent = copperData.price;
             
-            state.priceHistory.copper.push({ time: Date.now(), price: parseFloat(copperData.price) });
+            setPriceSeries('copper', copperData.chartPoints || []);
         }
         
         // Bitcoin (CoinGecko)
@@ -537,7 +603,7 @@ async function refreshAllData() {
             updatePriceUI('btc', btcData.price.toLocaleString(), btcData.change24h.toFixed(2) + '%', '$');
             const btcCurrEl = document.getElementById('btc-current');
             if (btcCurrEl) btcCurrEl.textContent = `~$${btcData.price.toLocaleString()}`;
-            state.priceHistory.bitcoin.push({ time: Date.now(), price: btcData.price });
+            setPriceSeries('bitcoin', btcData.chartPoints || []);
         }
         
         // Update timestamp
@@ -612,8 +678,8 @@ function initCharts() {
             data: {
                 labels: getDayLabels(7),
                 datasets: [
-                    { label: 'Gold (₹)', data: randomData(7, 55, 62), borderColor: '#FFD700', backgroundColor: 'rgba(255,215,0,0.1)', tension: 0.3, fill: true },
-                    { label: 'Silver (₹)', data: randomData(7, 78, 86), borderColor: '#C0C0C0', backgroundColor: 'rgba(192,192,192,0.1)', tension: 0.3, fill: true }
+                    { label: 'Gold (₹)', data: Array(7).fill(null), borderColor: '#FFD700', backgroundColor: 'rgba(255,215,0,0.1)', tension: 0.3, fill: true },
+                    { label: 'Silver (₹)', data: Array(7).fill(null), borderColor: '#C0C0C0', backgroundColor: 'rgba(192,192,192,0.1)', tension: 0.3, fill: true }
                 ]
             },
             options: chartOptions
@@ -622,10 +688,10 @@ function initCharts() {
     
     // Individual charts (price ranges for Tata Gold ETF, Groww Silver ETF)
     const configs = {
-        gold: { color: '#FFD700', range: [55, 62] },
-        silver: { color: '#C0C0C0', range: [78, 86] },
-        copper: { color: '#CD7F32', range: [490, 520] },
-        bitcoin: { color: '#F7931A', range: [70000, 75000] }
+        gold: { color: '#FFD700' },
+        silver: { color: '#C0C0C0' },
+        copper: { color: '#CD7F32' },
+        bitcoin: { color: '#F7931A' }
     };
     
     Object.keys(configs).forEach(key => {
@@ -637,9 +703,9 @@ function initCharts() {
                     labels: getDayLabels(7),
                     datasets: [{
                         label: key.charAt(0).toUpperCase() + key.slice(1),
-                        data: randomData(7, configs[key].range[0], configs[key].range[1]),
+                        data: Array(7).fill(null),
                         borderColor: configs[key].color,
-                        backgroundColor: configs[key].color.replace(')', ',0.1)').replace('rgb', 'rgba'),
+                        backgroundColor: `${configs[key].color}1a`,
                         tension: 0.3,
                         fill: true
                     }]
@@ -658,21 +724,28 @@ function getDayLabels(days) {
     });
 }
 
-function randomData(count, min, max) {
-    return Array.from({ length: count }, () => min + Math.random() * (max - min));
-}
-
 function updateCharts() {
     ['gold', 'silver', 'copper', 'bitcoin'].forEach(key => {
         const history = state.priceHistory[key];
         if (history.length > 1 && state.charts[key]) {
             const recent = history.slice(-7);
-            if (recent.length > 1) {
-                state.charts[key].data.datasets[0].data = recent.map(h => h.price);
-                state.charts[key].update('none');
-            }
+            state.charts[key].data.labels = buildChartLabels(recent);
+            state.charts[key].data.datasets[0].data = recent.map(h => h.price);
+            state.charts[key].update('none');
         }
     });
+
+    if (state.charts.overview) {
+        const goldHistory = state.priceHistory.gold.slice(-7);
+        const silverHistory = state.priceHistory.silver.slice(-7);
+        const labelsSource = goldHistory.length ? goldHistory : silverHistory;
+        if (labelsSource.length) {
+            state.charts.overview.data.labels = buildChartLabels(labelsSource);
+            state.charts.overview.data.datasets[0].data = goldHistory.map(h => h.price);
+            state.charts.overview.data.datasets[1].data = silverHistory.map(h => h.price);
+            state.charts.overview.update('none');
+        }
+    }
 }
 
 function savePriceHistory() {
@@ -681,20 +754,186 @@ function savePriceHistory() {
 
 function loadPriceHistory() {
     const saved = localStorage.getItem('priceHistory');
-    if (saved) state.priceHistory = JSON.parse(saved);
-}
-
-// ========== AI CHAT ==========
-function loadChatHistory() {
-    const saved = localStorage.getItem('chatHistory');
     if (saved) {
-        state.chatHistory = JSON.parse(saved);
-        state.chatHistory.forEach(msg => addMessageToUI(msg.role, msg.content));
+        try {
+            const parsed = JSON.parse(saved);
+            ['gold', 'silver', 'copper', 'bitcoin'].forEach(key => {
+                if (Array.isArray(parsed[key])) {
+                    state.priceHistory[key] = parsed[key]
+                        .map(item => ({
+                            label: item.label || (item.time
+                                ? new Date(item.time).toLocaleDateString('en-US', { weekday: 'short' })
+                                : ''),
+                            price: Number(item.price)
+                        }))
+                        .filter(item => Number.isFinite(item.price))
+                        .slice(-7);
+                }
+            });
+        } catch (e) {
+            console.warn('Failed to parse price history:', e);
+        }
     }
 }
 
+// ========== AI CHAT ==========
+function getChatScope() {
+    return COMMODITY_CONTEXT[state.currentView] ? state.currentView : 'overview';
+}
+
+function createThread(title = 'New thread') {
+    return {
+        id: `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        title,
+        messages: []
+    };
+}
+
+function ensureScopeStore(scope = getChatScope()) {
+    if (!state.chatStore[scope] || !Array.isArray(state.chatStore[scope].threads)) {
+        const thread = createThread(scope === 'overview' ? 'General chat' : `${COMMODITY_CONTEXT[scope].name}`);
+        state.chatStore[scope] = {
+            activeThreadId: thread.id,
+            threads: [thread]
+        };
+    }
+    if (!state.chatStore[scope].activeThreadId && state.chatStore[scope].threads[0]) {
+        state.chatStore[scope].activeThreadId = state.chatStore[scope].threads[0].id;
+    }
+    return state.chatStore[scope];
+}
+
+function getCurrentThread() {
+    const scope = getChatScope();
+    const scopeStore = ensureScopeStore(scope);
+    return scopeStore.threads.find(thread => thread.id === scopeStore.activeThreadId) || scopeStore.threads[0];
+}
+
+function loadChatHistory() {
+    const saved = localStorage.getItem('chatStore');
+    if (saved) {
+        try {
+            state.chatStore = JSON.parse(saved) || {};
+        } catch (e) {
+            console.warn('Failed to parse chat history:', e);
+            state.chatStore = {};
+        }
+    }
+    if (!Object.keys(state.chatStore).length) {
+        const legacyByView = localStorage.getItem('chatHistoryByView');
+        if (legacyByView) {
+            try {
+                const parsed = JSON.parse(legacyByView) || {};
+                Object.entries(parsed).forEach(([scope, messages]) => {
+                    const thread = createThread(scope === 'overview' ? 'General chat' : 'Imported thread');
+                    thread.messages = Array.isArray(messages) ? messages : [];
+                    state.chatStore[scope] = {
+                        activeThreadId: thread.id,
+                        threads: [thread]
+                    };
+                });
+                saveChatHistory();
+            } catch (e) {
+                console.warn('Failed to parse legacy view chat history:', e);
+            }
+        }
+    }
+    if (!Object.keys(state.chatStore).length) {
+        const legacyHistory = localStorage.getItem('chatHistory');
+        if (legacyHistory) {
+            try {
+                const thread = createThread('General chat');
+                thread.messages = JSON.parse(legacyHistory) || [];
+                state.chatStore.overview = {
+                    activeThreadId: thread.id,
+                    threads: [thread]
+                };
+                saveChatHistory();
+            } catch (e) {
+                console.warn('Failed to parse legacy chat history:', e);
+            }
+        }
+    }
+    renderCurrentChatHistory();
+}
+
 function saveChatHistory() {
-    localStorage.setItem('chatHistory', JSON.stringify(state.chatHistory));
+    localStorage.setItem('chatStore', JSON.stringify(state.chatStore));
+}
+
+function getWelcomeMessage() {
+    const scope = getChatScope();
+    if (COMMODITY_CONTEXT[scope]) {
+        return `You are in ${COMMODITY_CONTEXT[scope].name}. I will use the selected reference and current live prices for this commodity when answering.`;
+    }
+    return 'Ask about Gold, Silver, Copper, Bitcoin, timing, or portfolio decisions. I will use the selected reference and current live prices in the reply.';
+}
+
+function renderCurrentChatHistory() {
+    const container = document.getElementById('chat-messages');
+    if (!container) return;
+
+    container.innerHTML = '';
+    renderThreadOptions();
+    const thread = getCurrentThread();
+    const history = Array.isArray(thread.messages) ? thread.messages : [];
+
+    if (!history.length) {
+        addMessageToUI('assistant', getWelcomeMessage());
+        return;
+    }
+
+    history.forEach(msg => addMessageToUI(msg.role, msg.content));
+}
+
+function startNewChat() {
+    const thread = getCurrentThread();
+    thread.messages = [];
+    saveChatHistory();
+    renderCurrentChatHistory();
+    document.getElementById('chat-input')?.focus();
+}
+
+function renderThreadOptions() {
+    const select = document.getElementById('thread-select');
+    if (!select) return;
+    const scopeStore = ensureScopeStore();
+    const options = scopeStore.threads
+        .map(thread => `<option value="${thread.id}">${escapeHtml(thread.title || 'Untitled thread')}</option>`)
+        .join('');
+    select.innerHTML = options;
+    select.value = scopeStore.activeThreadId;
+}
+
+function createNewThread() {
+    const scopeStore = ensureScopeStore();
+    const thread = createThread(`Thread ${scopeStore.threads.length + 1}`);
+    scopeStore.threads.unshift(thread);
+    scopeStore.activeThreadId = thread.id;
+    saveChatHistory();
+    renderCurrentChatHistory();
+    document.getElementById('chat-input')?.focus();
+}
+
+function switchThread(threadId) {
+    const scopeStore = ensureScopeStore();
+    if (!scopeStore.threads.some(thread => thread.id === threadId)) return;
+    scopeStore.activeThreadId = threadId;
+    saveChatHistory();
+    renderCurrentChatHistory();
+}
+
+function deleteCurrentThread() {
+    const scopeStore = ensureScopeStore();
+    if (scopeStore.threads.length === 1) {
+        startNewChat();
+        return;
+    }
+    scopeStore.threads = scopeStore.threads.filter(thread => thread.id !== scopeStore.activeThreadId);
+    scopeStore.activeThreadId = scopeStore.threads[0]?.id || '';
+    saveChatHistory();
+    renderCurrentChatHistory();
+    document.getElementById('chat-input')?.focus();
 }
 
 function getContextForCurrentView() {
@@ -727,11 +966,18 @@ function getContextForCurrentView() {
 async function sendChat() {
     const input = document.getElementById('chat-input');
     const msg = input.value.trim();
-    if (!msg) return;
+    if (!msg || state.isSending) return;
     
+    state.isSending = true;
     input.value = '';
     addMessageToUI('user', msg);
-    state.chatHistory.push({ role: 'user', content: msg });
+    const thread = getCurrentThread();
+    const history = thread.messages;
+    history.push({ role: 'user', content: msg });
+    if (!thread.title || thread.title === 'New thread' || /^Thread \d+$/.test(thread.title)) {
+        thread.title = msg.slice(0, 36) || thread.title;
+    }
+    saveChatHistory();
     
     // Get combined context
     const context = getContextForCurrentView();
@@ -757,7 +1003,7 @@ async function sendChat() {
                     model: model,
                     messages: [
                         { role: 'system', content: context },
-                        ...state.chatHistory.slice(-10)
+                        ...history.slice(-10)
                     ],
                     max_tokens: 1500,
                     temperature: 0.7,
@@ -802,8 +1048,10 @@ async function sendChat() {
             
             if (fullReply) {
                 finalizeStreamingMessage(streamingMsgId, fullReply);
-                state.chatHistory.push({ role: 'assistant', content: fullReply });
+                history.push({ role: 'assistant', content: fullReply });
                 saveChatHistory();
+                renderThreadOptions();
+                state.isSending = false;
                 return;  // Success
             }
             
@@ -820,6 +1068,7 @@ async function sendChat() {
         ? '⚠️ Rate limit reached. Please try again in a few minutes.'
         : '⚠️ Connection error. Please try again.';
     addMessageToUI('assistant', errorMsg);
+    state.isSending = false;
 }
 
 function addStreamingMessage(id) {
@@ -827,7 +1076,7 @@ function addStreamingMessage(id) {
     const div = document.createElement('div');
     div.className = 'msg streaming';
     div.id = id;
-    div.innerHTML = '<span class="avatar ai">AI</span><p><span class="streaming-cursor">|</span></p>';
+    div.innerHTML = '<span class="avatar ai">AI</span><div class="msg-content"><span class="streaming-cursor">|</span></div>';
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
 }
@@ -835,9 +1084,9 @@ function addStreamingMessage(id) {
 function updateStreamingMessage(id, content) {
     const el = document.getElementById(id);
     if (el) {
-        const p = el.querySelector('p');
-        if (p) {
-            p.innerHTML = formatContent(content) + '<span class="streaming-cursor">|</span>';
+        const contentEl = el.querySelector('.msg-content');
+        if (contentEl) {
+            contentEl.innerHTML = formatContent(content) + '<span class="streaming-cursor">|</span>';
         }
         el.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
@@ -847,9 +1096,9 @@ function finalizeStreamingMessage(id, content) {
     const el = document.getElementById(id);
     if (el) {
         el.className = 'msg';
-        const p = el.querySelector('p');
-        if (p) {
-            p.innerHTML = formatContent(content);
+        const contentEl = el.querySelector('.msg-content');
+        if (contentEl) {
+            contentEl.innerHTML = formatContent(content);
         }
     }
 }
@@ -871,10 +1120,16 @@ function addMessageToUI(role, content) {
     
     const avatarClass = role === 'user' ? 'avatar' : 'avatar ai';
     const avatarText = role === 'user' ? 'You' : 'AI';
-    div.innerHTML = `<span class="${avatarClass}">${avatarText}</span><p>${formatContent(content)}</p>`;
+    div.innerHTML = `<span class="${avatarClass}">${avatarText}</span><div class="msg-content">${formatContent(content)}</div>`;
     
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function formatContent(text) {
@@ -887,35 +1142,12 @@ function formatContent(text) {
         }
     }
     
-    // Fallback: basic markdown
-    return text
+    return escapeHtml(text)
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
         .replace(/`(.*?)`/g, '<code>$1</code>')
-        .replace(/^### (.*$)/gm, '<h4>$1</h4>')
-        .replace(/^## (.*$)/gm, '<h3>$1</h3>')
-        .replace(/^# (.*$)/gm, '<h2>$1</h2>')
-        .replace(/^- (.*$)/gm, '<li>$1</li>')
-        .replace(/\n\n/g, '</p><p>')
-        .replace(/\n/g, '<br>')
-        .replace(/<li>(.*?)<\/li>/g, '<li>$1</li>');
+        .replace(/\n/g, '<br>');
 }
-
-// Streaming cursor animation
-const style = document.createElement('style');
-style.textContent = `
-    .streaming-cursor {
-        animation: blink 0.7s infinite;
-    }
-    @keyframes blink {
-        0%, 50% { opacity: 1; }
-        51%, 100% { opacity: 0; }
-    }
-    .msg.streaming {
-        opacity: 0.9;
-    }
-`;
-document.head.appendChild(style);
 
 // ========== COUNTDOWNS ==========
 function updateCountdowns() {
@@ -937,6 +1169,10 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshAllData();
     updateCountdowns();
     updateChatContext();
+    document.getElementById('book-select')?.addEventListener('change', () => {
+        updateChatContext();
+        renderCurrentChatHistory();
+    });
     
     // Fix chart sizing after a short delay
     setTimeout(() => {
