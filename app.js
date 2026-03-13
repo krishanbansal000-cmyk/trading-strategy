@@ -1,6 +1,5 @@
 // ========== CONFIGURATION ==========
 const CONFIG = {
-    // APIs
     alphavantage: {
         key: 'S9ZYCKGLYTDLOWTZ',
         cacheTime: 3600000
@@ -8,9 +7,9 @@ const CONFIG = {
     zai: {
         key: 'f06361dee1044c2387e21d15deb5c917.loNg83Ixj4zcQJF5',
         url: 'https://api.z.ai/api/coding/paas/v4',
-        model: 'glm-5'
+        model: 'glm-5',
+        fallbackModel: 'glm-4.7-flash'
     },
-    // Refresh interval (1 hour)
     refreshInterval: 3600000
 };
 
@@ -553,36 +552,60 @@ async function sendChat() {
     // Get combined context
     const context = getContextForCurrentView();
     
-    try {
-        const res = await fetch(`${CONFIG.zai.url}/chat/completions`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${CONFIG.zai.key}`
-            },
-            body: JSON.stringify({
-                model: CONFIG.zai.model,
-                messages: [
-                    { role: 'system', content: context },
-                    ...state.chatHistory.slice(-10)
-                ],
-                max_tokens: 1500,
-                temperature: 0.7
-            })
-        });
-        
-        const json = await res.json();
-        
-        if (json.choices?.[0]?.message?.content) {
-            const reply = json.choices[0].message.content;
-            addMessageToUI('assistant', reply);
-            state.chatHistory.push({ role: 'assistant', content: reply });
-            saveChatHistory();
-        } else {
-            throw new Error(json.error?.message || 'No response');
+    // Try primary model, fallback to glm-4.7-flash if rate limited
+    const models = [CONFIG.zai.model, CONFIG.zai.fallbackModel];
+    let reply = null;
+    let lastError = null;
+    
+    for (const model of models) {
+        try {
+            const res = await fetch(`${CONFIG.zai.url}/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${CONFIG.zai.key}`
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [
+                        { role: 'system', content: context },
+                        ...state.chatHistory.slice(-10)
+                    ],
+                    max_tokens: 1500,
+                    temperature: 0.7
+                })
+            });
+            
+            const json = await res.json();
+            
+            if (json.choices?.[0]?.message?.content) {
+                reply = json.choices[0].message.content;
+                
+                // Add model indicator if using fallback
+                if (model === CONFIG.zai.fallbackModel) {
+                    console.log('Using fallback model: glm-4.7-flash');
+                }
+                break;  // Success, exit loop
+            } else if (json.error) {
+                lastError = json.error;
+                console.warn(`Model ${model} failed:`, json.error.message);
+                // Continue to next model
+            }
+        } catch (e) {
+            lastError = e;
+            console.error(`Model ${model} error:`, e);
+            // Continue to next model
         }
-    } catch (e) {
-        const errorMsg = '⚠️ Connection error. Please try again.';
+    }
+    
+    if (reply) {
+        addMessageToUI('assistant', reply);
+        state.chatHistory.push({ role: 'assistant', content: reply });
+        saveChatHistory();
+    } else {
+        const errorMsg = lastError?.message?.includes('rate') || lastError?.message?.includes('limit')
+            ? '⚠️ Rate limit reached. Please try again in a few minutes.'
+            : '⚠️ Connection error. Please try again.';
         addMessageToUI('assistant', errorMsg);
     }
 }
