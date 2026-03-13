@@ -189,11 +189,24 @@ async function fetchYahooFinance(symbol) {
     }
     
     try {
-        // Use CORS proxy for Yahoo Finance API
+        // Try multiple CORS proxies
         const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=7d`;
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`;
-        const res = await fetch(proxyUrl);
-        const json = await res.json();
+        const proxies = [
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`,
+            `https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`
+        ];
+        
+        let json = null;
+        for (const proxyUrl of proxies) {
+            try {
+                const res = await fetch(proxyUrl);
+                if (res.ok) {
+                    json = await res.json();
+                    break;
+                }
+            } catch (e) { continue; }
+        }
+        if (!json) throw new Error('All proxies failed');
         
         if (json.chart?.result?.[0]) {
             const result = json.chart.result[0];
