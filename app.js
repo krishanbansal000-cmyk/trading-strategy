@@ -26,7 +26,7 @@ function getDefaultAgentUrl() {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         return '/api/agent/stream';
     }
-    return '';
+    return 'http://127.0.0.1:3000/api/agent/stream';
 }
 
 const ANALYSIS_FILES = {
