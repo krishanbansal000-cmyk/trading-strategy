@@ -8,152 +8,328 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <!-- Header -->
-    <header>
-        <div class="logo">🌟 Astro Trading</div>
-        <nav>
-            <a href="#prices">Prices</a>
-            <a href="#chart">Chart</a>
-            <a href="#chat">AI Chat</a>
-            <a href="#dates">Key Dates</a>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <span class="logo-icon">🌟</span>
+            <span class="logo-text">Astro Trading</span>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <button class="nav-item active" data-section="prices">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">Prices</span>
+            </button>
+            <button class="nav-item" data-section="gold">
+                <span class="nav-icon">🥇</span>
+                <span class="nav-label">Gold</span>
+            </button>
+            <button class="nav-item" data-section="silver">
+                <span class="nav-icon">🥈</span>
+                <span class="nav-label">Silver</span>
+            </button>
+            <button class="nav-item" data-section="copper">
+                <span class="nav-icon">🥉</span>
+                <span class="nav-label">Copper</span>
+            </button>
+            <button class="nav-item" data-section="bitcoin">
+                <span class="nav-icon">₿</span>
+                <span class="nav-label">Bitcoin</span>
+            </button>
+            <div class="nav-divider"></div>
+            <button class="nav-item" data-section="chart">
+                <span class="nav-icon">📈</span>
+                <span class="nav-label">Chart</span>
+            </button>
+            <button class="nav-item" data-section="chat">
+                <span class="nav-icon">💬</span>
+                <span class="nav-label">AI Chat</span>
+            </button>
+            <button class="nav-item" data-section="dates">
+                <span class="nav-icon">📅</span>
+                <span class="nav-label">Key Dates</span>
+            </button>
         </nav>
+        
+        <div class="sidebar-footer">
+            <span class="update-label">Last Update</span>
+            <span class="update-time" id="sidebar-update">--:--</span>
+        </div>
+    </aside>
+
+    <!-- Mobile Header -->
+    <header class="mobile-header">
+        <span class="logo-icon">🌟</span>
+        <span class="logo-text">Astro Trading</span>
+        <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
     </header>
 
-    <!-- Price Cards -->
-    <section id="prices" class="section">
-        <div class="price-grid">
-            <div class="price-card" data-asset="gold">
-                <span class="icon">🥇</span>
-                <span class="name">Gold</span>
-                <span class="price" id="gold-price">--</span>
-                <span class="change" id="gold-change">--</span>
-            </div>
-            <div class="price-card" data-asset="silver">
-                <span class="icon">🥈</span>
-                <span class="name">Silver</span>
-                <span class="price" id="silver-price">--</span>
-                <span class="change" id="silver-change">--</span>
-            </div>
-            <div class="price-card" data-asset="copper">
-                <span class="icon">🥉</span>
-                <span class="name">Copper</span>
-                <span class="price" id="copper-price">--</span>
-                <span class="change" id="copper-change">--</span>
-            </div>
-            <div class="price-card" data-asset="bitcoin">
-                <span class="icon">₿</span>
-                <span class="name">Bitcoin</span>
-                <span class="price" id="bitcoin-price">--</span>
-                <span class="change" id="bitcoin-change">--</span>
-            </div>
-        </div>
-        <p class="update-time" id="update-time">Loading prices...</p>
-    </section>
-
-    <!-- Chart -->
-    <section id="chart" class="section">
-        <h2>Gold vs Silver (7 Days)</h2>
-        <div class="chart-wrapper">
-            <canvas id="priceChart"></canvas>
-        </div>
-    </section>
-
-    <!-- Strategies Accordion -->
-    <section class="section">
-        <h2>Strategies</h2>
-        <div class="accordion">
-            <details>
-                <summary>🥇 Gold - Sun Ruled</summary>
-                <div class="strategy-content">
-                    <p><strong>Bullish:</strong> Sun in Aries (Mar 20-Apr 19), Leo (Aug 16-Sep 16)</p>
-                    <p><strong>Avoid:</strong> Sun in Libra (Oct-Nov)</p>
-                    <p><strong>Stop Loss:</strong> -5% | <strong>Target:</strong> +3%, +5%, +8%</p>
+    <!-- Main Content -->
+    <main class="main-content">
+        
+        <!-- Prices Section -->
+        <section id="section-prices" class="content-section active">
+            <h1>Live Prices</h1>
+            <div class="price-grid">
+                <div class="price-card gold" onclick="showSection('gold')">
+                    <span class="icon">🥇</span>
+                    <div class="info">
+                        <span class="name">Gold</span>
+                        <span class="price" id="gold-price">--</span>
+                        <span class="change" id="gold-change">--</span>
+                    </div>
                 </div>
-            </details>
-            <details>
-                <summary>🥈 Silver - Moon Ruled</summary>
-                <div class="strategy-content">
-                    <p><strong>Bullish:</strong> Moon in Taurus, Full Moon days</p>
-                    <p><strong>Avoid:</strong> Moon in Scorpio, New Moon</p>
-                    <p><strong>Stop Loss:</strong> -8% | <strong>Target:</strong> +3%, +5%, +12%</p>
+                <div class="price-card silver" onclick="showSection('silver')">
+                    <span class="icon">🥈</span>
+                    <div class="info">
+                        <span class="name">Silver</span>
+                        <span class="price" id="silver-price">--</span>
+                        <span class="change" id="silver-change">--</span>
+                    </div>
                 </div>
-            </details>
-            <details>
-                <summary>🥉 Copper - Venus Ruled</summary>
-                <div class="strategy-content">
-                    <p><strong>SUPER BULLISH:</strong> Apr 1-25 (Venus in Taurus)</p>
-                    <p><strong>DANGER:</strong> Jul 10-Aug 4 (Venus debilitated)</p>
-                    <p><strong>Stop Loss:</strong> -10% | Exit before July!</p>
+                <div class="price-card copper" onclick="showSection('copper')">
+                    <span class="icon">🥉</span>
+                    <div class="info">
+                        <span class="name">Copper</span>
+                        <span class="price" id="copper-price">--</span>
+                        <span class="change" id="copper-change">--</span>
+                    </div>
                 </div>
-            </details>
-            <details>
-                <summary>₿ Bitcoin - Rahu Ruled</summary>
-                <div class="strategy-content">
-                    <p><strong>SUPER BULLISH:</strong> Until Jun 2026 (Rahu in Aquarius)</p>
-                    <p><strong>Target:</strong> $90K-$110K</p>
-                    <p><strong>Strategy:</strong> Buy & HODL, add on dips below $65K</p>
-                </div>
-            </details>
-        </div>
-    </section>
-
-    <!-- AI Chat -->
-    <section id="chat" class="section">
-        <h2>AI Advisor</h2>
-        <div class="chat-container">
-            <div class="book-selector">
-                <label>Context:</label>
-                <select id="book-select">
-                    <option value="general">Financial Astrology</option>
-                    <option value="gann">W.D. Gann Methods</option>
-                    <option value="vedic">Vedic Astrology</option>
-                    <option value="personal">Your Birth Chart</option>
-                </select>
-            </div>
-            <div class="chat-messages" id="chat-messages">
-                <div class="msg ai">
-                    <span class="avatar">🤖</span>
-                    <p>Hello! Ask me about planetary influences on commodities, best trading days, or your birth chart.</p>
+                <div class="price-card bitcoin" onclick="showSection('bitcoin')">
+                    <span class="icon">₿</span>
+                    <div class="info">
+                        <span class="name">Bitcoin</span>
+                        <span class="price" id="bitcoin-price">--</span>
+                        <span class="change" id="bitcoin-change">--</span>
+                    </div>
                 </div>
             </div>
-            <div class="chat-input">
-                <input type="text" id="user-input" placeholder="Ask about trading strategies...">
-                <button onclick="sendMessage()">Send</button>
-            </div>
-        </div>
-    </section>
+            <button class="refresh-btn" onclick="refreshPrices()">
+                <span>🔄</span> Refresh Prices
+            </button>
+        </section>
 
-    <!-- Key Dates -->
-    <section id="dates" class="section">
-        <h2>Key Dates</h2>
-        <div class="dates-list">
-            <div class="date-item bullish">
-                <span class="date">Mar 20</span>
-                <span class="event">☀️ Sun enters Aries</span>
-                <span class="impact">Bullish Gold</span>
+        <!-- Gold Section -->
+        <section id="section-gold" class="content-section">
+            <h1>🥇 Gold Strategy</h1>
+            <div class="strategy-card">
+                <div class="strategy-row">
+                    <span class="label">Planetary Ruler</span>
+                    <span class="value">☀️ Sun</span>
+                </div>
+                <div class="strategy-row">
+                    <span class="label">Position Size</span>
+                    <span class="value">10-15% max</span>
+                </div>
+                <div class="strategy-row">
+                    <span class="label">Stop Loss</span>
+                    <span class="value danger">-5%</span>
+                </div>
+                <div class="strategy-row">
+                    <span class="label">Profit Targets</span>
+                    <span class="value success">+3%, +5%, +8%, +12%</span>
+                </div>
             </div>
-            <div class="date-item bullish">
-                <span class="date">Apr 1-25</span>
-                <span class="event">♀️ Venus in Taurus</span>
-                <span class="impact">Super Bullish Copper</span>
+            <div class="signal-box bullish">
+                <h3>⚡ Best Days</h3>
+                <ul>
+                    <li>Mar 20 - Apr 19: Sun in Aries</li>
+                    <li>Aug 16 - Sep 16: Sun in Leo (own sign)</li>
+                    <li>Sun in Krittika, Uttara Phalguni nakshatras</li>
+                </ul>
             </div>
-            <div class="date-item danger">
-                <span class="date">Jul 10</span>
-                <span class="event">♀️ Venus enters Virgo</span>
-                <span class="impact">EXIT Copper!</span>
+            <div class="signal-box danger">
+                <h3>❌ Avoid</h3>
+                <ul>
+                    <li>Oct 17 - Nov 16: Sun in Libra (debilitated)</li>
+                    <li>Sun conjunct Rahu - volatility</li>
+                </ul>
             </div>
-            <div class="date-item warning">
-                <span class="date">Jun 2026</span>
-                <span class="event">☊ Rahu exits Aquarius</span>
-                <span class="impact">Reduce Bitcoin 50%</span>
-            </div>
-        </div>
-    </section>
+        </section>
 
-    <!-- Footer -->
-    <footer>
-        <p>⚠️ For educational purposes only. Not financial advice.</p>
-    </footer>
+        <!-- Silver Section -->
+        <section id="section-silver" class="content-section">
+            <h1>🥈 Silver Strategy</h1>
+            <div class="strategy-card">
+                <div class="strategy-row">
+                    <span class="label">Planetary Ruler</span>
+                    <span class="value">🌙 Moon</span>
+                </div>
+                <div class="strategy-row">
+                    <span class="label">Position Size</span>
+                    <span class="value">10-15% max</span>
+                </div>
+                <div class="strategy-row">
+                    <span class="label">Stop Loss</span>
+                    <span class="value danger">-8%</span>
+                </div>
+                <div class="strategy-row">
+                    <span class="label">Profit Targets</span>
+                    <span class="value success">+3%, +5%, +8%, +12%</span>
+                </div>
+            </div>
+            <div class="signal-box bullish">
+                <h3>⚡ Best Days</h3>
+                <ul>
+                    <li>Moon in Taurus (exalted) - BEST</li>
+                    <li>Moon in Rohini, Hasta nakshatras</li>
+                    <li>Full Moon days</li>
+                </ul>
+            </div>
+            <div class="signal-box danger">
+                <h3>❌ Avoid</h3>
+                <ul>
+                    <li>Moon in Scorpio (debilitated) - WORST</li>
+                    <li>Moon conjunct Rahu/Ketu</li>
+                    <li>New Moon days</li>
+                </ul>
+            </div>
+            <div class="perf-box">
+                <span class="perf-label">Verified Returns (Mar 5-11)</span>
+                <span class="perf-value">+4.90%</span>
+            </div>
+        </section>
+
+        <!-- Copper Section -->
+        <section id="section-copper" class="content-section">
+            <h1>🥉 Copper Strategy</h1>
+            <div class="strategy-card">
+                <div class="strategy-row">
+                    <span class="label">Planetary Ruler</span>
+                    <span class="value">♀️ Venus</span>
+                </div>
+                <div class="strategy-row">
+                    <span class="label">Your Position</span>
+                    <span class="value">Entry ₹580 → Current ₹508</span>
+                </div>
+                <div class="strategy-row">
+                    <span class="label">P&L</span>
+                    <span class="value danger">-12.4%</span>
+                </div>
+                <div class="strategy-row">
+                    <span class="label">Action</span>
+                    <span class="value warning">HOLD - Don't sell at loss</span>
+                </div>
+            </div>
+            <div class="signal-box bullish">
+                <h3>⚡ SUPER BULLISH: Apr 1-25</h3>
+                <p>Venus enters Taurus (own sign)</p>
+                <p class="countdown" id="copper-countdown">Loading...</p>
+            </div>
+            <div class="signal-box danger critical">
+                <h3>🚨 CRITICAL: Jul 10 - Aug 4</h3>
+                <p>Venus in Virgo (DEBILITATED)</p>
+                <p><strong>EXIT ALL COPPER BEFORE JULY 10!</strong></p>
+            </div>
+        </section>
+
+        <!-- Bitcoin Section -->
+        <section id="section-bitcoin" class="content-section">
+            <h1>₿ Bitcoin Strategy</h1>
+            <div class="strategy-card">
+                <div class="strategy-row">
+                    <span class="label">Planetary Ruler</span>
+                    <span class="value">☊ Rahu</span>
+                </div>
+                <div class="strategy-row">
+                    <span class="label">Score</span>
+                    <span class="value success">10/10 SUPER BULLISH</span>
+                </div>
+                <div class="strategy-row">
+                    <span class="label">Position Size</span>
+                    <span class="value">5-10% max</span>
+                </div>
+                <div class="strategy-row">
+                    <span class="label">Target</span>
+                    <span class="value success">$90K - $110K by Jun 2026</span>
+                </div>
+            </div>
+            <div class="signal-box bullish">
+                <h3>⚡ SUPER BULLISH Until Jun 2026</h3>
+                <p>Rahu in Aquarius (own sign)</p>
+                <ul>
+                    <li>Buy & HODL</li>
+                    <li>Add on dips below $65K</li>
+                    <li>Take profits at $90K+</li>
+                </ul>
+            </div>
+            <div class="signal-box warning">
+                <h3>⚠️ Exit Signal</h3>
+                <p>June 2026: Rahu exits Aquarius</p>
+                <p>Reduce position by 50%+</p>
+            </div>
+        </section>
+
+        <!-- Chart Section -->
+        <section id="section-chart" class="content-section">
+            <h1>📈 Price Chart</h1>
+            <div class="chart-container">
+                <canvas id="priceChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Chat Section -->
+        <section id="section-chat" class="content-section">
+            <h1>💬 AI Advisor</h1>
+            <div class="chat-container">
+                <div class="context-bar">
+                    <label>Book:</label>
+                    <select id="book-select">
+                        <option value="general">📚 Financial Astrology</option>
+                        <option value="gann">📐 W.D. Gann</option>
+                        <option value="vedic">🕉️ Vedic Astrology</option>
+                        <option value="personal">👤 Your Birth Chart</option>
+                    </select>
+                </div>
+                <div class="chat-messages" id="chat-messages">
+                    <div class="msg ai">
+                        <span class="avatar">🤖</span>
+                        <p>Hello! Ask me about trading strategies, planetary influences, or your birth chart.</p>
+                    </div>
+                </div>
+                <div class="chat-input">
+                    <input type="text" id="user-input" placeholder="Ask a question..." onkeypress="if(event.key==='Enter')sendMessage()">
+                    <button onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dates Section -->
+        <section id="section-dates" class="content-section">
+            <h1>📅 Key Dates</h1>
+            <div class="dates-list">
+                <div class="date-item bullish">
+                    <div class="date-left">
+                        <span class="date">Mar 20</span>
+                        <span class="event">☀️ Sun enters Aries</span>
+                    </div>
+                    <span class="impact">Bullish Gold</span>
+                </div>
+                <div class="date-item bullish">
+                    <div class="date-left">
+                        <span class="date">Apr 1-25</span>
+                        <span class="event">♀️ Venus in Taurus</span>
+                    </div>
+                    <span class="impact">Super Bullish Copper</span>
+                </div>
+                <div class="date-item danger">
+                    <div class="date-left">
+                        <span class="date">Jul 10</span>
+                        <span class="event">♀️ Venus in Virgo</span>
+                    </div>
+                    <span class="impact">EXIT Copper!</span>
+                </div>
+                <div class="date-item warning">
+                    <div class="date-left">
+                        <span class="date">Jun 2026</span>
+                        <span class="event">☊ Rahu exits Aquarius</span>
+                    </div>
+                    <span class="impact">Reduce BTC 50%</span>
+                </div>
+            </div>
+        </section>
+
+    </main>
 
     <script src="app.js"></script>
 </body>
