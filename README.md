@@ -6,8 +6,8 @@ A comprehensive, planetary-aligned commodity trading guide hosted on GitHub Page
 
 | Asset | ETF/Stock | Planetary Ruler |
 |-------|-----------|-----------------|
-| 🥇 Gold | GOLDBEES | Sun |
-| 🥈 Silver | SILVERBEES | Moon |
+| 🥇 Gold | TATAGOLD.NS | Sun |
+| 🥈 Silver | GROWWSLVR.NS | Moon |
 | 🥉 Copper | HINDUSTAN COPPER | Venus |
 | ₿ Bitcoin | BTC | Rahu |
 

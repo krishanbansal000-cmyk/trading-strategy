@@ -15,10 +15,18 @@ const CONFIG = {
 
 // ETF Symbols on NSE
 const ETF_SYMBOLS = {
-    gold: 'TATAGOLDETF.NS',      // Tata Gold ETF
-    silver: 'GROWWSILVER.NS',    // Groww Silver ETF  
-    copper: 'HINDCOPPER.NS'      // Hindustan Copper
+    gold: ['TATAGOLD.NS', 'TATAGOLDETF.NS'],      // Tata Gold ETF
+    silver: ['GROWWSLVR.NS', 'GROWWSILVER.NS'],   // Groww Silver ETF  
+    copper: ['HINDCOPPER.NS', 'HINDCOPPER.BO']   // Hindustan Copper
 };
+
+// Yahoo proxy endpoints (stable CORS route first)
+const YAHOO_CHART_BASE = 'query1.finance.yahoo.com/v8/finance/chart';
+const YAHOO_PROXY_URLS = [
+    (url) => `https://r.jina.ai/http://${url}`,
+    (url) => `https://r.jina.ai/https://${url}`,
+    (url) => `https://${url}`
+];
 
 // ========== BOOK CONTEXTS ==========
 const BOOKS = {
@@ -190,7 +198,8 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 
 // Yahoo Finance API (for all NSE ETFs)
 async function fetchYahooFinance(symbol) {
-    const cacheKey = `yf_${symbol}`;
+    const symbolList = Array.isArray(symbol) ? symbol : [symbol];
+    const cacheKey = `yf_${symbolList[0]}`;
     const cached = localStorage.getItem(cacheKey);
     
     if (cached) {
@@ -199,56 +208,91 @@ async function fetchYahooFinance(symbol) {
     }
     
     try {
-        // Try multiple CORS proxies
-        const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=7d`;
-        const proxies = [
-            `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`,
-            `https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`
-        ];
+        const timeoutMs = 9000;
+        const query = 'interval=1d&range=7d&includePrePost=false';
         
-        let json = null;
-        for (const proxyUrl of proxies) {
-            try {
-                const res = await fetch(proxyUrl);
-                if (res.ok) {
-                    json = await res.json();
-                    break;
+        for (const symbolTry of symbolList) {
+            for (const proxyBuilder of YAHOO_PROXY_URLS) {
+                const rawUrl = `${YAHOO_CHART_BASE}/${symbolTry}?${query}`;
+                const proxyUrl = proxyBuilder(rawUrl);
+                
+                try {
+                    const controller = new AbortController();
+                    const timer = setTimeout(() => controller.abort(), timeoutMs);
+                    let res;
+                    try {
+                        res = await fetch(proxyUrl, { signal: controller.signal });
+                    } finally {
+                        clearTimeout(timer);
+                    }
+                    
+                    if (!res.ok) continue;
+                    
+                    const text = await res.text();
+                    let json = null;
+                    try {
+                        json = JSON.parse(text);
+                    } catch {
+                        const marker = 'Markdown Content:';
+                        const markerIndex = text.lastIndexOf(marker);
+                        if (markerIndex !== -1) {
+                            json = JSON.parse(text.slice(markerIndex + marker.length).trim());
+                        }
+                    }
+                    
+                    if (!json?.chart?.result?.[0]) continue;
+                    
+                    const result = json.chart.result[0];
+                    const meta = result.meta || {};
+                    const prices = result.indicators?.quote?.[0]?.close || [];
+                    const closes = prices.filter(p => p !== null && Number.isFinite(p));
+                    const currentPrice = Number((meta.regularMarketPrice || closes[closes.length - 1] || 0).toFixed(2));
+                    const previousClose = Number(
+                        (meta.previousClose || meta.chartPreviousClose || closes[closes.length - 2] || currentPrice).toFixed(2)
+                    );
+                    const change = previousClose > 0 ? ((currentPrice - previousClose) / previousClose) * 100 : 0;
+                    
+                    const data = {
+                        symbol: meta.symbol || symbolTry,
+                        price: currentPrice.toFixed(2),
+                        change: change.toFixed(2),
+                        changePercent: change.toFixed(2) + '%',
+                        prices: closes
+                    };
+                    
+                    localStorage.setItem(cacheKey, JSON.stringify({ data, time: Date.now() }));
+                    return data;
                 }
-            } catch (e) { continue; }
-        }
-        if (!json) throw new Error('All proxies failed');
-        
-        if (json.chart?.result?.[0]) {
-            const result = json.chart.result[0];
-            const meta = result.meta;
-            const currentPrice = meta.regularMarketPrice;
-            const previousClose = meta.previousClose;
-            const change = ((currentPrice - previousClose) / previousClose) * 100;
-            
-            const data = {
-                price: currentPrice.toFixed(2),
-                change: change.toFixed(2),
-                changePercent: change.toFixed(2) + '%',
-                prices: result.indicators.quote[0].close.filter(p => p !== null)
-            };
-            
-            localStorage.setItem(cacheKey, JSON.stringify({ data, time: Date.now() }));
-            return data;
+                catch (e) {
+                    console.warn(`Yahoo fetch failed for ${symbolTry} via ${proxyUrl}`, e);
+                    continue;
+                }
+            }
         }
     } catch (e) {
         console.error('Yahoo Finance error:', e);
     }
+
+    if (cached) {
+        return JSON.parse(cached).data;
+    }
     
-    // Fallback: simulated based on realistic values
-    return getSimulatedPrice(symbol);
+    // Fallback: simulated based on realistic values for bootstrap only
+    return {
+        ...getSimulatedPrice(symbolList[0]),
+        symbol: symbolList[0]
+    };
 }
 
 // Simulated price fallback
 function getSimulatedPrice(symbol) {
     const basePrices = {
-        'TATAGOLDETF.NS': 58,
-        'GROWWSILVER.NS': 82,
-        'HINDCOPPER.NS': 508
+        'TATAGOLD.NS': 15,
+        'TATAGOLDETF.NS': 15,
+        'GROWWSLVR.NS': 25,
+        'GROWWSILVER.NS': 25,
+        'HINDCOPPER.NS': 520,
+        'HINDCOPPER.BO': 520
     };
     
     const basePrice = basePrices[symbol] || 100;
