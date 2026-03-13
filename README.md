@@ -38,6 +38,27 @@ This is for **educational purposes only**. Not financial advice. Always do your 
 - HTML5
 - CSS3 (with CSS Grid & Flexbox)
 - Vanilla JavaScript
+- Node.js backend for agent streaming
+- Local Codex CLI integration
+
+## Agent Mode
+
+For integrated books, astrology, backtesting, web search, and optional dangerous terminal execution, run the app locally or on a server:
+
+```bash
+npm install
+npm start
+```
+
+Optional dangerous local terminal tool for coding tasks:
+
+```bash
+ENABLE_DANGEROUS_TERMINAL=1 npm start
+```
+
+This flow assumes the environment already has a working `codex` CLI session available, such as OpenClaw/OpenAI Codex local runtime.
+
+GitHub Pages can still serve the static UI, but the integrated agent/backend flow requires a real Node server and will not run on Pages-only hosting.
 
 ---
 

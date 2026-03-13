@@ -1,0 +1,15 @@
+{
+  "name": "astrology-agent-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Astrology trading dashboard with agent-backed chat, books, backtesting, and optional dangerous terminal access.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "openai": "^5.19.1"
+  }
+}

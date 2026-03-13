@@ -8,7 +8,12 @@ const CONFIG = {
         key: 'f06361dee1044c2387e21d15deb5c917.loNg83Ixj4zcQJF5',
         url: 'https://api.z.ai/api/coding/paas/v4',
         model: 'glm-5',
-        fallbackModel: 'glm-4.7-flashx'  // FlashX version as backup
+        fallbackModel: 'glm-4.7-flashx',  // FlashX version as backup
+        maxTokens: 4000,
+        maxContinuations: 2
+    },
+    agent: {
+        url: '/api/agent/stream'
     },
     refreshInterval: 3600000
 };
@@ -194,6 +199,11 @@ function updateChatContext() {
     } else {
         indicator.textContent = `General market guidance · ${bookName}`;
     }
+}
+
+function setAgentStatus(text) {
+    const badge = document.querySelector('.chat-status');
+    if (badge) badge.textContent = text;
 }
 
 function buildChartLabels(points) {
@@ -994,6 +1004,29 @@ async function sendChat() {
     // Create streaming message placeholder
     const streamingMsgId = 'stream-' + Date.now();
     addStreamingMessage(streamingMsgId);
+    setAgentStatus('Agent thinking');
+
+    try {
+        const fullReply = await sendChatViaAgent({
+            msg,
+            history,
+            thread,
+            streamingMsgId
+        });
+        if (fullReply) {
+            finalizeStreamingMessage(streamingMsgId, fullReply);
+            history.push({ role: 'assistant', content: fullReply });
+            saveChatHistory();
+            renderThreadOptions();
+            setAgentStatus('Agent ready');
+            state.isSending = false;
+            return;
+        }
+        throw new Error('Empty agent response');
+    } catch (agentError) {
+        console.error('Agent backend error:', agentError);
+        setAgentStatus('Direct chat fallback');
+    }
     
     // Try primary model, fallback to glm-4.7-flashx if rate limited
     const models = [CONFIG.zai.model, CONFIG.zai.fallbackModel];
@@ -1002,64 +1035,89 @@ async function sendChat() {
     
     for (const model of models) {
         try {
-            const res = await fetch(`${CONFIG.zai.url}/chat/completions`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${CONFIG.zai.key}`
-                },
-                body: JSON.stringify({
-                    model: model,
-                    messages: [
-                        { role: 'system', content: context },
-                        ...history.slice(-10)
-                    ],
-                    max_tokens: 1500,
-                    temperature: 0.7,
-                    stream: true  // Enable streaming
-                })
-            });
-            
-            if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.error?.message || 'API error');
-            }
-            
-            // Handle streaming response
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
+            let continuationCount = 0;
+            let needsContinuation = false;
+
+            do {
+                needsContinuation = false;
+                const requestMessages = [
+                    { role: 'system', content: context },
+                    ...history.slice(-10)
+                ];
+
+                if (fullReply) {
+                    requestMessages.push({ role: 'assistant', content: fullReply });
+                    requestMessages.push({
+                        role: 'user',
+                        content: 'Continue exactly from where you stopped. Do not repeat previous text. Finish the answer completely.'
+                    });
+                }
+
+                const res = await fetch(`${CONFIG.zai.url}/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${CONFIG.zai.key}`
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: requestMessages,
+                        max_tokens: CONFIG.zai.maxTokens,
+                        temperature: 0.7,
+                        stream: true
+                    })
+                });
                 
-                const chunk = decoder.decode(value, { stream: true });
-                const lines = chunk.split('\n').filter(line => line.trim() !== '');
+                if (!res.ok) {
+                    const errorData = await res.json();
+                    throw new Error(errorData.error?.message || 'API error');
+                }
                 
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let finishReason = null;
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n').filter(line => line.trim() !== '');
+                    
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
                         const data = line.slice(6);
                         if (data === '[DONE]') continue;
                         
                         try {
                             const json = JSON.parse(data);
-                            const content = json.choices?.[0]?.delta?.content;
+                            const choice = json.choices?.[0];
+                            const content = choice?.delta?.content;
                             if (content) {
                                 fullReply += content;
                                 updateStreamingMessage(streamingMsgId, fullReply);
+                            }
+                            if (choice?.finish_reason) {
+                                finishReason = choice.finish_reason;
                             }
                         } catch (e) {
                             // Skip invalid JSON
                         }
                     }
                 }
-            }
+
+                if (finishReason === 'length' && continuationCount < CONFIG.zai.maxContinuations) {
+                    needsContinuation = true;
+                    continuationCount += 1;
+                }
+            } while (needsContinuation);
             
             if (fullReply) {
                 finalizeStreamingMessage(streamingMsgId, fullReply);
                 history.push({ role: 'assistant', content: fullReply });
                 saveChatHistory();
                 renderThreadOptions();
+                setAgentStatus('Agent ready');
                 state.isSending = false;
                 return;  // Success
             }
@@ -1077,7 +1135,90 @@ async function sendChat() {
         ? '⚠️ Rate limit reached. Please try again in a few minutes.'
         : '⚠️ Connection error. Please try again.';
     addMessageToUI('assistant', errorMsg);
+    setAgentStatus('Agent offline');
     state.isSending = false;
+}
+
+async function sendChatViaAgent({ msg, history, thread, streamingMsgId }) {
+    const bookSelect = document.getElementById('book-select');
+    const book = bookSelect?.value || 'general';
+    const response = await fetch(CONFIG.agent.url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            message: msg,
+            commodity: COMMODITY_CONTEXT[state.currentView] ? state.currentView : 'overview',
+            book,
+            threadId: thread.id,
+            history: history.slice(-8)
+        })
+    });
+
+    if (!response.ok || !response.body) {
+        throw new Error('Agent backend unavailable');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullReply = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split('\n\n');
+        buffer = chunks.pop() || '';
+
+        for (const chunk of chunks) {
+            const parsed = parseSseChunk(chunk);
+            if (!parsed) continue;
+            const { event, data } = parsed;
+
+            if (event === 'status') {
+                setAgentStatus(data.message || 'Working');
+            } else if (event === 'tool') {
+                setAgentStatus(`Running ${data.name || 'tool'}`);
+            } else if (event === 'tool_result') {
+                setAgentStatus(data.name ? `${data.name} ready` : 'Tool finished');
+            } else if (event === 'delta') {
+                fullReply += data.content || '';
+                updateStreamingMessage(streamingMsgId, fullReply);
+            } else if (event === 'error') {
+                throw new Error(data.message || 'Agent stream failed');
+            }
+        }
+    }
+
+    return fullReply.trim();
+}
+
+function parseSseChunk(chunk) {
+    const lines = chunk.split('\n');
+    let event = 'message';
+    const dataLines = [];
+
+    for (const line of lines) {
+        if (line.startsWith('event:')) {
+            event = line.slice(6).trim();
+        } else if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).trim());
+        }
+    }
+
+    if (!dataLines.length) return null;
+
+    try {
+        return {
+            event,
+            data: JSON.parse(dataLines.join('\n'))
+        };
+    } catch (e) {
+        return null;
+    }
 }
 
 function addStreamingMessage(id) {
@@ -1178,6 +1319,7 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshAllData();
     updateCountdowns();
     updateChatContext();
+    setAgentStatus('Agent ready');
     document.getElementById('book-select')?.addEventListener('change', () => {
         updateChatContext();
         renderCurrentChatHistory();
