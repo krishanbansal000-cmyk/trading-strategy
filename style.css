@@ -816,6 +816,16 @@ body {
     flex-shrink: 0;
 }
 
+.chat-mode-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.chat-mode-row .thread-label {
+    min-width: 42px;
+}
+
 .thread-row-top {
     display: flex;
     align-items: center;

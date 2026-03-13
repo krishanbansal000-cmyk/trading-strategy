@@ -530,6 +530,13 @@
                     <option value="delete-thread">Delete thread</option>
                 </select>
             </div>
+            <div class="chat-mode-row">
+                <label class="thread-label" for="chat-mode-select">Mode</label>
+                <select id="chat-mode-select" class="thread-select" onchange="setChatMode(this.value)">
+                    <option value="codex">Codex</option>
+                    <option value="zai">Z.ai</option>
+                </select>
+            </div>
             <select id="thread-select" class="thread-select" onchange="switchThread(this.value)"></select>
         </div>
         <div class="chat-messages" id="chat-messages"></div>

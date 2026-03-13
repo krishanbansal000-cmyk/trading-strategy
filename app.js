@@ -18,6 +18,13 @@ const CONFIG = {
     refreshInterval: 3600000
 };
 
+const ANALYSIS_FILES = {
+    gold: 'gold_analysis_2026-03-13.md',
+    silver: 'silver_analysis_2026-03-13.md',
+    copper: 'copper_analysis_2026-03-13.md',
+    bitcoin: 'bitcoin_analysis_2026-03-13.md'
+};
+
 // ETF Symbols on NSE
 const ETF_SYMBOLS = {
     gold: ['TATAGOLD.NS', 'TATAGOLDETF.NS'],      // Tata Gold ETF
@@ -166,7 +173,8 @@ const state = {
     charts: {},
     chatStore: {},
     priceHistory: { gold: [], silver: [], copper: [], bitcoin: [] },
-    isSending: false
+    isSending: false,
+    chatMode: localStorage.getItem('chatMode') || 'codex'
 };
 
 // ========== NAVIGATION ==========
@@ -204,6 +212,14 @@ function updateChatContext() {
 function setAgentStatus(text) {
     const badge = document.querySelector('.chat-status');
     if (badge) badge.textContent = text;
+}
+
+function setChatMode(mode) {
+    state.chatMode = mode === 'zai' ? 'zai' : 'codex';
+    localStorage.setItem('chatMode', state.chatMode);
+    const select = document.getElementById('chat-mode-select');
+    if (select && select.value !== state.chatMode) select.value = state.chatMode;
+    setAgentStatus(state.chatMode === 'codex' ? 'Codex ready' : 'Z.ai ready');
 }
 
 function applyChatWidth(width) {
@@ -958,10 +974,11 @@ function saveChatHistory() {
 
 function getWelcomeMessage() {
     const scope = getChatScope();
+    const modeText = state.chatMode === 'codex' ? 'Codex' : 'Z.ai';
     if (COMMODITY_CONTEXT[scope]) {
-        return `You are in ${COMMODITY_CONTEXT[scope].name}. I will use the selected reference and current live prices for this commodity when answering.`;
+        return `You are in ${COMMODITY_CONTEXT[scope].name}. ${modeText} will use the selected reference, current live prices, and local commodity analysis files when answering.`;
     }
-    return 'Ask about Gold, Silver, Copper, Bitcoin, timing, or portfolio decisions. I will use the selected reference and current live prices in the reply.';
+    return `Ask about Gold, Silver, Copper, Bitcoin, timing, or portfolio decisions. ${modeText} will use the selected reference, current live prices, and local commodity analysis files in the reply.`;
 }
 
 function renderCurrentChatHistory() {
@@ -1040,7 +1057,40 @@ function deleteCurrentThread() {
     document.getElementById('chat-input')?.focus();
 }
 
-function getContextForCurrentView() {
+async function loadAnalysisFileContext() {
+    if (loadAnalysisFileContext.cache) return loadAnalysisFileContext.cache;
+
+    loadAnalysisFileContext.cache = (async () => {
+        const entries = await Promise.all(
+            Object.entries(ANALYSIS_FILES).map(async ([key, file]) => {
+                try {
+                    const response = await fetch(file, { cache: 'no-store' });
+                    if (!response.ok) return null;
+                    const text = await response.text();
+                    return [key, text];
+                } catch {
+                    return null;
+                }
+            })
+        );
+        return Object.fromEntries(entries.filter(Boolean));
+    })();
+
+    return loadAnalysisFileContext.cache;
+}
+
+function summarizeAnalysisText(text) {
+    return String(text || '')
+        .replace(/\r/g, '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#') && !line.startsWith('|---'))
+        .slice(0, 18)
+        .join('\n')
+        .slice(0, 2400);
+}
+
+async function getContextForCurrentView() {
     // Get commodity context if viewing a specific commodity
     const commodityCtx = COMMODITY_CONTEXT[state.currentView];
     
@@ -1063,6 +1113,18 @@ function getContextForCurrentView() {
 - Silver: ₹${state.prices.silver.price || '--'} (${state.prices.silver.change || '--'})
 - Copper: ₹${state.prices.copper.price || '--'} (${state.prices.copper.change || '--'})
 - Bitcoin: $${state.prices.bitcoin.price?.toLocaleString() || '--'} (${state.prices.bitcoin.change24h?.toFixed(2) || '--'}%)`;
+
+    const analysisFiles = await loadAnalysisFileContext();
+    const analysisEntries = state.currentView === 'overview'
+        ? Object.entries(analysisFiles)
+        : [[state.currentView, analysisFiles[state.currentView]]].filter(([, text]) => text);
+
+    if (analysisEntries.length) {
+        context += '\n\nLOCAL COMMODITY ANALYSIS FILES:\n';
+        analysisEntries.forEach(([key, text]) => {
+            context += `\n[${key.toUpperCase()}]\n${summarizeAnalysisText(text)}\n`;
+        });
+    }
     
     return context;
 }
@@ -1084,33 +1146,39 @@ async function sendChat() {
     saveChatHistory();
     
     // Get combined context
-    const context = getContextForCurrentView();
+    const context = await getContextForCurrentView();
     
     // Create streaming message placeholder
     const streamingMsgId = 'stream-' + Date.now();
     addStreamingMessage(streamingMsgId);
     setAgentStatus('Agent thinking');
 
-    try {
-        const fullReply = await sendChatViaAgent({
-            msg,
-            history,
-            thread,
-            streamingMsgId
-        });
-        if (fullReply) {
-            finalizeStreamingMessage(streamingMsgId, fullReply);
-            history.push({ role: 'assistant', content: fullReply });
-            saveChatHistory();
-            renderThreadOptions();
-            setAgentStatus('Agent ready');
+    if (state.chatMode === 'codex') {
+        try {
+            const fullReply = await sendChatViaAgent({
+                msg,
+                history,
+                thread,
+                streamingMsgId
+            });
+            if (fullReply) {
+                finalizeStreamingMessage(streamingMsgId, fullReply);
+                history.push({ role: 'assistant', content: fullReply });
+                saveChatHistory();
+                renderThreadOptions();
+                setAgentStatus('Codex ready');
+                state.isSending = false;
+                return;
+            }
+            throw new Error('Empty agent response');
+        } catch (agentError) {
+            console.error('Agent backend error:', agentError);
+            setAgentStatus('Codex offline');
+            removeStreamingMessage(streamingMsgId);
+            addMessageToUI('assistant', '⚠️ Codex chat is unavailable right now. Switch to Z.ai or retry.');
             state.isSending = false;
             return;
         }
-        throw new Error('Empty agent response');
-    } catch (agentError) {
-        console.error('Agent backend error:', agentError);
-        setAgentStatus('Direct chat fallback');
     }
     
     // Try primary model, fallback to glm-4.7-flashx if rate limited
@@ -1202,7 +1270,7 @@ async function sendChat() {
                 history.push({ role: 'assistant', content: fullReply });
                 saveChatHistory();
                 renderThreadOptions();
-                setAgentStatus('Agent ready');
+                setAgentStatus('Z.ai ready');
                 state.isSending = false;
                 return;  // Success
             }
@@ -1220,7 +1288,7 @@ async function sendChat() {
         ? '⚠️ Rate limit reached. Please try again in a few minutes.'
         : '⚠️ Connection error. Please try again.';
     addMessageToUI('assistant', errorMsg);
-    setAgentStatus('Agent offline');
+    setAgentStatus('Z.ai offline');
     state.isSending = false;
 }
 
@@ -1405,7 +1473,7 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshAllData();
     updateCountdowns();
     updateChatContext();
-    setAgentStatus('Agent ready');
+    setChatMode(state.chatMode);
     document.getElementById('book-select')?.addEventListener('change', () => {
         updateChatContext();
         renderCurrentChatHistory();
