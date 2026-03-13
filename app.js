@@ -8,7 +8,7 @@ const CONFIG = {
         key: 'f06361dee1044c2387e21d15deb5c917.loNg83Ixj4zcQJF5',
         url: 'https://api.z.ai/api/coding/paas/v4',
         model: 'glm-5',
-        fallbackModel: 'glm-4.7-flash'
+        fallbackModel: 'glm-4.7-flashx'  // FlashX version as backup
     },
     refreshInterval: 3600000
 };
@@ -16,7 +16,7 @@ const CONFIG = {
 // ETF Symbols on NSE
 const ETF_SYMBOLS = {
     gold: 'TATAGOLDETF.NS',      // Tata Gold ETF
-    silver: 'GROWWSILVER.NS',    // Groww Silver ETF
+    silver: 'GROWWSILVER.NS',    // Groww Silver ETF  
     copper: 'HINDCOPPER.NS'      // Hindustan Copper
 };
 
