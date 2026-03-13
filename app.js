@@ -8,7 +8,7 @@ const CONFIG = {
         key: 'f06361dee1044c2387e21d15deb5c917.loNg83Ixj4zcQJF5',
         url: 'https://api.z.ai/api/coding/paas/v4',
         model: 'glm-5',
-        fallbackModel: 'glm-4.7-flashx',  // FlashX version as backup
+        fallbackModel: 'glm-4.7-flash',  // Flash as backup
         maxTokens: 4000,
         maxContinuations: 2
     },
@@ -1173,15 +1173,11 @@ async function sendChat() {
             throw new Error('Empty agent response');
         } catch (agentError) {
             console.error('Agent backend error:', agentError);
-            setAgentStatus('Codex offline');
-            removeStreamingMessage(streamingMsgId);
-            addMessageToUI('assistant', '⚠️ Codex chat is unavailable right now. Switch to Z.ai or retry.');
-            state.isSending = false;
-            return;
+            setAgentStatus('Codex unavailable, using Z.ai');
         }
     }
     
-    // Try primary model, fallback to glm-4.7-flashx if rate limited
+    // Try primary model, fallback to glm-4.7-flash if rate limited
     const models = [CONFIG.zai.model, CONFIG.zai.fallbackModel];
     let fullReply = '';
     let lastError = null;
@@ -1222,8 +1218,15 @@ async function sendChat() {
                 });
                 
                 if (!res.ok) {
-                    const errorData = await res.json();
-                    throw new Error(errorData.error?.message || 'API error');
+                    const errorText = await res.text();
+                    let message = `API error (${res.status})`;
+                    try {
+                        const errorData = JSON.parse(errorText);
+                        message = errorData.error?.message || errorData.message || message;
+                    } catch {
+                        if (errorText) message = errorText;
+                    }
+                    throw new Error(message);
                 }
                 
                 const reader = res.body.getReader();
@@ -1284,9 +1287,15 @@ async function sendChat() {
     
     // If we get here, both models failed
     removeStreamingMessage(streamingMsgId);
-    const errorMsg = lastError?.message?.includes('rate') || lastError?.message?.includes('limit')
-        ? '⚠️ Rate limit reached. Please try again in a few minutes.'
-        : '⚠️ Connection error. Please try again.';
+    const message = String(lastError?.message || '').toLowerCase();
+    let errorMsg = '⚠️ Connection error. Please try again.';
+    if (message.includes('weekly/monthly limit exhausted') || message.includes('rate') || message.includes('limit')) {
+        errorMsg = `⚠️ ${lastError.message}`;
+    } else if (message.includes('insufficient balance') || message.includes('no resource package') || message.includes('recharge')) {
+        errorMsg = `⚠️ ${lastError.message}`;
+    } else if (message.includes('405') || message.includes('agent backend unavailable')) {
+        errorMsg = '⚠️ Codex endpoint is not available on this deployment. Use Z.ai here or run the local Codex server.';
+    }
     addMessageToUI('assistant', errorMsg);
     setAgentStatus('Z.ai offline');
     state.isSending = false;
@@ -1310,7 +1319,7 @@ async function sendChatViaAgent({ msg, history, thread, streamingMsgId }) {
     });
 
     if (!response.ok || !response.body) {
-        throw new Error('Agent backend unavailable');
+        throw new Error(`Agent backend unavailable (${response.status})`);
     }
 
     const reader = response.body.getReader();
