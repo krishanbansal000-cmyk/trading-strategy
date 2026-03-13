@@ -5,97 +5,208 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Financial Astrology Trading Strategies</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <header>
         <nav>
             <div class="logo">🌟 Astro Trading</div>
             <ul class="nav-links">
-                <li><a href="#gold">Gold</a></li>
-                <li><a href="#silver">Silver</a></li>
-                <li><a href="#copper">Copper</a></li>
-                <li><a href="#bitcoin">Bitcoin</a></li>
-                <li><a href="#rules">Rules</a></li>
-                <li><a href="#calendar">Calendar</a></li>
+                <li><a href="#dashboard"><i class="fas fa-chart-line"></i> Dashboard</a></li>
+                <li><a href="#gold"><i class="fas fa-coins"></i> Gold</a></li>
+                <li><a href="#silver"><i class="fas fa-gem"></i> Silver</a></li>
+                <li><a href="#copper"><i class="fas fa-industry"></i> Copper</a></li>
+                <li><a href="#bitcoin"><i class="fab fa-bitcoin"></i> Bitcoin</a></li>
+                <li><a href="#books"><i class="fas fa-book"></i> Books</a></li>
+                <li><a href="#chat"><i class="fas fa-robot"></i> AI Chat</a></li>
             </ul>
+            <button class="mobile-menu" onclick="toggleMobileMenu()">
+                <i class="fas fa-bars"></i>
+            </button>
         </nav>
     </header>
 
     <main>
         <!-- Hero Section -->
         <section class="hero">
-            <h1>Financial Astrology Trading Strategies</h1>
-            <p class="subtitle">Planetary-Aligned Commodity Trading</p>
-            <p class="disclaimer">⚠️ For educational purposes only. Not financial advice.</p>
+            <div class="hero-content">
+                <h1>Financial Astrology Trading Strategies</h1>
+                <p class="subtitle">Planetary-Aligned Commodity Trading with AI Assistance</p>
+                <p class="disclaimer">⚠️ For educational purposes only. Not financial advice.</p>
+            </div>
         </section>
 
-        <!-- Quick Stats -->
-        <section class="stats">
-            <div class="stat-card">
-                <span class="stat-value">100%</span>
-                <span class="stat-label">Trend Accuracy (Verified)</span>
+        <!-- Dashboard Section -->
+        <section id="dashboard" class="dashboard-section">
+            <h2><i class="fas fa-tachometer-alt"></i> Trading Dashboard</h2>
+            
+            <div class="live-prices">
+                <div class="price-card gold-card">
+                    <div class="price-header">
+                        <span class="commodity-icon">🥇</span>
+                        <span class="commodity-name">GOLDBEES</span>
+                    </div>
+                    <div class="price-value" id="gold-price">₹130.95</div>
+                    <div class="price-change negative">-1.12%</div>
+                    <div class="price-score">Score: <span class="score">4/10</span></div>
+                    <div class="price-action">HOLD</div>
+                </div>
+                
+                <div class="price-card silver-card">
+                    <div class="price-header">
+                        <span class="commodity-icon">🥈</span>
+                        <span class="commodity-name">SILVERBEES</span>
+                    </div>
+                    <div class="price-value" id="silver-price">₹248.19</div>
+                    <div class="price-change negative">-2.09%</div>
+                    <div class="price-score">Score: <span class="score">0/10</span></div>
+                    <div class="price-action avoid">AVOID</div>
+                </div>
+                
+                <div class="price-card copper-card">
+                    <div class="price-header">
+                        <span class="commodity-icon">🥉</span>
+                        <span class="commodity-name">HINDUSTAN COPPER</span>
+                    </div>
+                    <div class="price-value" id="copper-price">₹508.30</div>
+                    <div class="price-change negative">-3.61%</div>
+                    <div class="price-score">Score: <span class="score">2/10</span></div>
+                    <div class="price-action caution">CAUTION</div>
+                </div>
+                
+                <div class="price-card bitcoin-card">
+                    <div class="price-header">
+                        <span class="commodity-icon">₿</span>
+                        <span class="commodity-name">BITCOIN</span>
+                    </div>
+                    <div class="price-value" id="bitcoin-price">$71,000</div>
+                    <div class="price-change positive">+2.5%</div>
+                    <div class="price-score">Score: <span class="score bullish">10/10</span></div>
+                    <div class="price-action buy">SUPER BULLISH</div>
+                </div>
             </div>
-            <div class="stat-card">
-                <span class="stat-value">+4.90%</span>
-                <span class="stat-label">Silver Returns (Mar 5-11)</span>
+
+            <!-- Quick Stats -->
+            <div class="stats-row">
+                <div class="stat-card">
+                    <i class="fas fa-chart-line"></i>
+                    <span class="stat-value">100%</span>
+                    <span class="stat-label">Trend Accuracy</span>
+                </div>
+                <div class="stat-card">
+                    <i class="fas fa-arrow-trend-up"></i>
+                    <span class="stat-value">+4.90%</span>
+                    <span class="stat-label">Silver Returns (Mar 5-11)</span>
+                </div>
+                <div class="stat-card">
+                    <i class="fas fa-balance-scale"></i>
+                    <span class="stat-value">8.4x</span>
+                    <span class="stat-label">Silver vs Gold</span>
+                </div>
+                <div class="stat-card">
+                    <i class="fas fa-sync-alt"></i>
+                    <span class="stat-value" id="last-update">--:--</span>
+                    <span class="stat-label">Last Price Update</span>
+                </div>
             </div>
-            <div class="stat-card">
-                <span class="stat-value">8.4x</span>
-                <span class="stat-label">Silver vs Gold Outperformance</span>
+
+            <!-- Price Chart -->
+            <div class="chart-container">
+                <h3><i class="fas fa-chart-area"></i> Price History (24h)</h3>
+                <canvas id="price-chart"></canvas>
             </div>
+        </section>
+
+        <!-- Action Buttons -->
+        <section class="action-buttons">
+            <button class="action-btn primary" onclick="scrollToSection('chat')">
+                <i class="fas fa-robot"></i> Ask AI Advisor
+            </button>
+            <button class="action-btn secondary" onclick="scrollToSection('books')">
+                <i class="fas fa-book"></i> Study Books
+            </button>
+            <button class="action-btn tertiary" onclick="generateSignal()">
+                <i class="fas fa-sync-alt"></i> Refresh Signals
+            </button>
         </section>
 
         <!-- Gold Section -->
         <section id="gold" class="commodity-section gold">
             <div class="commodity-header">
                 <span class="commodity-icon">🥇</span>
-                <h2>Gold (GOLDBEES)</h2>
+                <div>
+                    <h2>Gold (GOLDBEES)</h2>
+                    <p class="ruler">Ruled by <strong>Sun</strong> ☀️</p>
+                </div>
             </div>
             
-            <div class="grid">
-                <div class="card">
-                    <h3>🌟 Planetary Ruler</h3>
-                    <p><strong>Sun</strong> - Represents wealth, authority, and vitality</p>
-                    <p>Nakshatras: Krittika, Uttara Phalguni, Uttarashadha</p>
+            <div class="tabs">
+                <button class="tab-btn active" onclick="showTab('gold', 'strategy')">Strategy</button>
+                <button class="tab-btn" onclick="showTab('gold', 'timing')">Timing</button>
+                <button class="tab-btn" onclick="showTab('gold', 'history')">History</button>
+            </div>
+            
+            <div class="tab-content active" id="gold-strategy">
+                <div class="grid">
+                    <div class="card">
+                        <h3><i class="fas fa-percentage"></i> Position Size</h3>
+                        <div class="info-row"><span>Max Allocation:</span><strong>10-15%</strong></div>
+                        <div class="info-row"><span>Core Position:</span><strong>5%</strong></div>
+                        <div class="info-row"><span>Trading Position:</span><strong>5-10%</strong></div>
+                    </div>
+                    
+                    <div class="card">
+                        <h3><i class="fas fa-shield-alt"></i> Risk Management</h3>
+                        <div class="info-row"><span>Stop Loss:</span><strong class="danger">-5%</strong></div>
+                        <div class="info-row"><span>Book Profits:</span><strong class="success">+3%, +5%, +8%, +12%</strong></div>
+                    </div>
+                    
+                    <div class="card highlight">
+                        <h3><i class="fas fa-bolt"></i> SUPER BULLISH Days</h3>
+                        <ul>
+                            <li>☀️ Sun in Aries (Mar 20 - Apr 19)</li>
+                            <li>☀️ Sun in Leo (Aug 16 - Sep 16)</li>
+                            <li>☀️ Sun in wealth nakshatras</li>
+                            <li>☀️ Sun conjunct natal Jupiter</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="card danger">
+                        <h3><i class="fas fa-exclamation-triangle"></i> AVOID Days</h3>
+                        <ul>
+                            <li>❌ Sun in Libra (debilitated) - Oct-Nov</li>
+                            <li>❌ Sun conjunct Rahu - Volatility</li>
+                            <li>❌ Sun conjunct Saturn - Heavy</li>
+                        </ul>
+                    </div>
                 </div>
-                
-                <div class="card">
-                    <h3>📊 Position Size</h3>
-                    <p><strong>Max Allocation:</strong> 10-15% of portfolio</p>
-                    <p><strong>Core Position:</strong> 5% (never sell)</p>
-                    <p><strong>Trading Position:</strong> 5-10%</p>
-                </div>
-                
-                <div class="card">
-                    <h3>🎯 Risk Management</h3>
-                    <p><strong>Stop Loss:</strong> -5% from entry</p>
-                    <p><strong>Book Profits:</strong> +3%, +5%, +8%, +12%</p>
-                </div>
-                
-                <div class="card highlight">
-                    <h3>⚡ SUPER BULLISH Days</h3>
-                    <ul>
-                        <li>☀️ Sun in Aries (Mar 20 - Apr 19) - Solar New Year</li>
-                        <li>☀️ Sun in Leo (Aug 16 - Sep 16) - Own Sign</li>
-                        <li>☀️ Sun in wealth nakshatras (Krittika, Uttara Phalguni)</li>
-                        <li>☀️ Sun conjunct natal Jupiter</li>
-                    </ul>
-                </div>
-                
-                <div class="card danger">
-                    <h3>🔴 AVOID Days</h3>
-                    <ul>
-                        <li>❌ Sun in Libra (debilitated) - Oct 17 - Nov 16</li>
-                        <li>❌ Sun conjunct Rahu - Extreme volatility</li>
-                        <li>❌ Sun conjunct Saturn - Heavy, slow movement</li>
-                    </ul>
-                </div>
-                
-                <div class="card">
+            </div>
+            
+            <div class="tab-content" id="gold-timing">
+                <div class="timing-card">
                     <h3>⏰ Best Execution Times</h3>
-                    <p><strong>Morning:</strong> 9:15-9:30 AM (market open)</p>
-                    <p><strong>Afternoon:</strong> 2:30-3:00 PM</p>
-                    <p><strong>Avoid:</strong> Last 15 minutes (volatile)</p>
+                    <div class="timing-grid">
+                        <div class="time-slot best">
+                            <span class="time">9:15-9:30 AM</span>
+                            <span class="label">Market Open - BEST</span>
+                        </div>
+                        <div class="time-slot good">
+                            <span class="time">2:30-3:00 PM</span>
+                            <span class="label">Afternoon - GOOD</span>
+                        </div>
+                        <div class="time-slot avoid">
+                            <span class="time">3:15-3:30 PM</span>
+                            <span class="label">Last 15 min - AVOID</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="gold-history">
+                <div class="history-card">
+                    <h3>📊 Recent Performance</h3>
+                    <p>March 5-11, 2026: <strong class="success">+0.58%</strong></p>
+                    <p>Trend Accuracy: <strong>100%</strong></p>
                 </div>
             </div>
         </section>
@@ -104,60 +215,88 @@
         <section id="silver" class="commodity-section silver">
             <div class="commodity-header">
                 <span class="commodity-icon">🥈</span>
-                <h2>Silver (SILVERBEES)</h2>
+                <div>
+                    <h2>Silver (SILVERBEES)</h2>
+                    <p class="ruler">Ruled by <strong>Moon</strong> 🌙</p>
+                </div>
             </div>
             
-            <div class="grid">
-                <div class="card">
-                    <h3>🌙 Planetary Ruler</h3>
-                    <p><strong>Moon</strong> - Represents emotions, intuition, and liquidity</p>
-                    <p>Nakshatras: Rohini, Hasta, Shravana</p>
+            <div class="tabs">
+                <button class="tab-btn active" onclick="showTab('silver', 'strategy')">Strategy</button>
+                <button class="tab-btn" onclick="showTab('silver', 'timing')">Timing</button>
+                <button class="tab-btn" onclick="showTab('silver', 'history')">History</button>
+            </div>
+            
+            <div class="tab-content active" id="silver-strategy">
+                <div class="grid">
+                    <div class="card">
+                        <h3><i class="fas fa-percentage"></i> Position Size</h3>
+                        <div class="info-row"><span>Max Allocation:</span><strong>10-15%</strong></div>
+                        <div class="info-row"><span>Stop Loss:</span><strong class="danger">-8%</strong></div>
+                        <div class="info-row"><span>Book Profits:</span><strong class="success">+3%, +5%, +8%, +12%</strong></div>
+                    </div>
+                    
+                    <div class="card highlight">
+                        <h3><i class="fas fa-bolt"></i> SUPER BULLISH Days</h3>
+                        <ul>
+                            <li>🌙 Moon in Taurus (exalted) - BEST</li>
+                            <li>🌙 Moon conjunct natal Jupiter</li>
+                            <li>🌙 Moon in Rohini, Hasta nakshatras</li>
+                            <li>🌙 Full Moon days</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="card danger">
+                        <h3><i class="fas fa-exclamation-triangle"></i> AVOID Days</h3>
+                        <ul>
+                            <li>❌ Moon in Scorpio (debilitated) - WORST</li>
+                            <li>❌ Moon conjunct Rahu/Ketu</li>
+                            <li>❌ New Moon days</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="card success-card">
+                        <h3><i class="fas fa-trophy"></i> Verified Performance</h3>
+                        <div class="perf-stat"><span>Trend Accuracy:</span><strong>100%</strong></div>
+                        <div class="perf-stat"><span>Returns (Mar 5-11):</span><strong class="success">+4.90%</strong></div>
+                        <div class="perf-stat"><span>vs Gold:</span><strong>8.4x better</strong></div>
+                    </div>
                 </div>
-                
-                <div class="card">
-                    <h3>📊 Position Size</h3>
-                    <p><strong>Max Allocation:</strong> 10-15% of portfolio</p>
-                    <p><strong>Stop Loss:</strong> -8% (silver is more volatile)</p>
-                    <p><strong>Book Profits:</strong> +3%, +5%, +8%, +12%</p>
+            </div>
+            
+            <div class="tab-content" id="silver-timing">
+                <div class="timing-card">
+                    <h3>🌙 Moon Phase Trading</h3>
+                    <div class="moon-phases">
+                        <div class="phase bullish">
+                            <span class="phase-icon">🌕</span>
+                            <span class="phase-name">Full Moon</span>
+                            <span class="phase-action">High volatility - Potential breakout</span>
+                        </div>
+                        <div class="phase neutral">
+                            <span class="phase-icon">🌓</span>
+                            <span class="phase-name">First Quarter</span>
+                            <span class="phase-action">Moderate activity</span>
+                        </div>
+                        <div class="phase avoid">
+                            <span class="phase-icon">🌑</span>
+                            <span class="phase-name">New Moon</span>
+                            <span class="phase-action">Low volume - Avoid</span>
+                        </div>
+                    </div>
                 </div>
-                
-                <div class="card highlight">
-                    <h3>⚡ SUPER BULLISH Days</h3>
-                    <ul>
-                        <li>🌙 Moon in Taurus (exalted) - BEST for silver</li>
-                        <li>🌙 Moon conjunct natal Jupiter - SUPER BULLISH</li>
-                        <li>🌙 Moon in wealth nakshatras (Rohini, Hasta)</li>
-                        <li>🌙 Full Moon days - High volatility, potential breakout</li>
-                    </ul>
-                </div>
-                
-                <div class="card danger">
-                    <h3>🔴 AVOID Days</h3>
-                    <ul>
-                        <li>❌ Moon in Scorpio (debilitated) - WORST for silver</li>
-                        <li>❌ Moon conjunct Rahu/Ketu - Extreme manipulation</li>
-                        <li>❌ New Moon days - Low volume, choppy</li>
-                    </ul>
-                </div>
-                
-                <div class="card">
-                    <h3>📈 Verified Performance</h3>
-                    <p><strong>March 5-11, 2026:</strong></p>
-                    <ul>
-                        <li>✅ Trend Accuracy: 100%</li>
-                        <li>✅ Returns: +4.90%</li>
-                        <li>✅ Outperformed Gold: 8.4x</li>
-                    </ul>
-                </div>
-                
-                <div class="card">
-                    <h3>🎯 Silver Strategy</h3>
-                    <p>Silver is <strong>more volatile</strong> than gold:</p>
-                    <ul>
-                        <li>Wider stop losses (-8% vs -5%)</li>
-                        <li>Larger profit potential (+12%+)</li>
-                        <li>Best during Moon-Jupiter transits</li>
-                    </ul>
+            </div>
+            
+            <div class="tab-content" id="silver-history">
+                <div class="history-card">
+                    <h3>📊 Verified Results (March 5-11, 2026)</h3>
+                    <table class="history-table">
+                        <tr><th>Metric</th><th>Value</th></tr>
+                        <tr><td>Trend Accuracy</td><td class="success">100%</td></tr>
+                        <tr><td>Daily Accuracy</td><td>55%</td></tr>
+                        <tr><td>Total Returns</td><td class="success">+4.90%</td></tr>
+                        <tr><td>vs Gold Performance</td><td class="success">8.4x</td></tr>
+                    </table>
                 </div>
             </div>
         </section>
@@ -166,59 +305,59 @@
         <section id="copper" class="commodity-section copper">
             <div class="commodity-header">
                 <span class="commodity-icon">🥉</span>
-                <h2>Copper (HINDUSTAN COPPER)</h2>
+                <div>
+                    <h2>Copper (HINDUSTAN COPPER)</h2>
+                    <p class="ruler">Ruled by <strong>Venus</strong> ♀️</p>
+                </div>
             </div>
             
             <div class="grid">
-                <div class="card">
-                    <h3>♀️ Planetary Ruler</h3>
-                    <p><strong>Venus</strong> - Represents wealth, beauty, and luxury</p>
-                    <p>Nakshatras: Bharani, Purva Phalguni, Purva Ashadha</p>
-                </div>
-                
-                <div class="card">
-                    <h3>📊 Position Size</h3>
-                    <p><strong>Max Allocation:</strong> 5-10% of portfolio</p>
-                    <p><strong>Stop Loss:</strong> -10%</p>
-                    <p><strong>Target:</strong> +12-15%</p>
+                <div class="card warning">
+                    <h3><i class="fas fa-exclamation-circle"></i> Current Position</h3>
+                    <div class="position-info">
+                        <div class="info-row"><span>Entry:</span><strong>₹580</strong></div>
+                        <div class="info-row"><span>Current:</span><strong>₹508.30</strong></div>
+                        <div class="info-row"><span>P&L:</span><strong class="danger">-12.4%</strong></div>
+                        <div class="info-row"><span>Stop Loss:</span><strong>₹460</strong></div>
+                        <div class="info-row"><span>Target:</span><strong>₹580-620 (by Apr 25)</strong></div>
+                    </div>
+                    <div class="strategy-box">Strategy: <strong>HOLD</strong> - Don't sell at loss</div>
                 </div>
                 
                 <div class="card highlight">
-                    <h3>⚡ SUPER BULLISH Period</h3>
-                    <ul>
-                        <li>♀️ Venus in Taurus (Apr 1-25) - OWN SIGN - BEST!</li>
-                        <li>♀️ Venus in Libra (own sign)</li>
-                        <li>♀️ Venus in Pisces (exalted)</li>
-                        <li>♀️ Venus in wealth nakshatras</li>
-                    </ul>
+                    <h3><i class="fas fa-bolt"></i> SUPER BULLISH (Apr 1-25)</h3>
+                    <p><strong>Venus enters Taurus (Own Sign)</strong></p>
+                    <div class="countdown" id="copper-countdown">Loading...</div>
+                    <p>Best time to add positions or recover losses</p>
                 </div>
                 
                 <div class="card danger critical">
-                    <h3>🚨 CRITICAL DANGER PERIOD</h3>
-                    <ul>
-                        <li>⚠️ July 10 - Aug 4: Venus in Virgo (DEBILITATED)</li>
-                        <li>⚠️ NEVER buy copper during this period!</li>
-                        <li>⚠️ Exit or reduce positions before July 10</li>
-                    </ul>
-                </div>
-                
-                <div class="card warning">
-                    <h3>⚠️ Current Position Status</h3>
-                    <p><strong>Entry:</strong> ₹580</p>
-                    <p><strong>Stop Loss:</strong> ₹460 (-20.7%)</p>
-                    <p><strong>Target:</strong> ₹580-620 by April 25</p>
-                    <p><strong>Strategy:</strong> HOLD - Don't sell at loss</p>
-                    <p><strong>Bullish period starts:</strong> April 1 (18 days)</p>
+                    <h3><i class="fas fa-skull-crossbones"></i> CRITICAL DANGER (Jul 10 - Aug 4)</h3>
+                    <p><strong>Venus in Virgo (DEBILITATED)</strong></p>
+                    <div class="danger-text">⚠️ NEVER buy copper during this period!</div>
+                    <p>Exit or reduce positions BEFORE July 10</p>
                 </div>
                 
                 <div class="card">
-                    <h3>📅 Copper Timeline</h3>
-                    <ul>
-                        <li><strong>Now - Mar 31:</strong> CAUTION (Venus in Aries)</li>
-                        <li><strong>Apr 1-25:</strong> SUPER BULLISH (Venus in Taurus)</li>
-                        <li><strong>Apr 26 - Jul 9:</strong> Neutral</li>
-                        <li><strong>Jul 10 - Aug 4:</strong> DANGER (Exit before!)</li>
-                    </ul>
+                    <h3><i class="fas fa-calendar-alt"></i> Copper Timeline</h3>
+                    <div class="timeline">
+                        <div class="timeline-item caution">
+                            <span class="date">Now - Mar 31</span>
+                            <span class="status">CAUTION</span>
+                        </div>
+                        <div class="timeline-item bullish">
+                            <span class="date">Apr 1-25</span>
+                            <span class="status">SUPER BULLISH</span>
+                        </div>
+                        <div class="timeline-item neutral">
+                            <span class="date">Apr 26 - Jul 9</span>
+                            <span class="status">Neutral</span>
+                        </div>
+                        <div class="timeline-item danger">
+                            <span class="date">Jul 10 - Aug 4</span>
+                            <span class="status">EXIT!</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -227,130 +366,175 @@
         <section id="bitcoin" class="commodity-section bitcoin">
             <div class="commodity-header">
                 <span class="commodity-icon">₿</span>
-                <h2>Bitcoin (BTC)</h2>
+                <div>
+                    <h2>Bitcoin (BTC)</h2>
+                    <p class="ruler">Ruled by <strong>Rahu</strong> (North Lunar Node) ☊</p>
+                </div>
             </div>
             
             <div class="grid">
-                <div class="card">
-                    <h3>☊ Planetary Ruler</h3>
-                    <p><strong>Rahu (North Lunar Node)</strong> - Represents innovation, speculation, and disruption</p>
-                    <p>Rahu rules cryptocurrency, technology, and unconventional assets</p>
-                </div>
-                
-                <div class="card highlight">
-                    <h3>⚡ SUPER BULLISH Period</h3>
-                    <ul>
-                        <li>☊ Rahu in Aquarius (Jan 2025 - Jun 2026) - OWN SIGN!</li>
-                        <li>⏰ Time remaining: ~3 months</li>
-                        <li>🎯 Target: $90,000 - $110,000 by June 2026</li>
-                    </ul>
+                <div class="card highlight super">
+                    <h3><i class="fas fa-rocket"></i> SUPER BULLISH (10/10)</h3>
+                    <p><strong>Rahu in Aquarius (Jan 2025 - Jun 2026)</strong></p>
+                    <p>Rahu in own sign = Tech/Crypto boom!</p>
+                    <div class="target-box">
+                        <span>Target:</span>
+                        <strong>$90,000 - $110,000 by June 2026</strong>
+                    </div>
                 </div>
                 
                 <div class="card">
-                    <h3>📊 Position Size</h3>
-                    <p><strong>Max Allocation:</strong> 5-10% of portfolio</p>
-                    <p><strong>Mental Stop Loss:</strong> $55,000</p>
-                    <p><strong>Current Price:</strong> ~$71,000 / ₹66 lakhs</p>
+                    <h3><i class="fas fa-percentage"></i> Position Size</h3>
+                    <div class="info-row"><span>Max Allocation:</span><strong>5-10%</strong></div>
+                    <div class="info-row"><span>Mental Stop Loss:</span><strong>$55,000</strong></div>
+                    <div class="info-row"><span>Current:</span><strong>~$71,000</strong></div>
                 </div>
                 
                 <div class="card">
-                    <h3>🎯 BTC Strategy</h3>
-                    <p><strong>Score: 10/10 - SUPER BULLISH</strong></p>
+                    <h3><i class="fas fa-crosshairs"></i> Strategy</h3>
                     <ul>
                         <li>✅ BUY & HODL until June 2026</li>
                         <li>✅ Add on dips below $65,000</li>
-                        <li>✅ Rahu in Aquarius = tech/crypto boom</li>
+                        <li>✅ Take profits at $90K+</li>
                     </ul>
                 </div>
                 
                 <div class="card danger">
-                    <h3>🔴 Exit Signal</h3>
-                    <ul>
-                        <li>June 2026: Rahu exits Aquarius</li>
-                        <li>Reduce position by 50%+ before transit</li>
-                        <li>Rahu in Capricorn = less favorable for crypto</li>
-                    </ul>
-                </div>
-                
-                <div class="card">
-                    <h3>₿ Why Bitcoin?</h3>
-                    <ul>
-                        <li>Digital gold, store of value</li>
-                        <li>Institutional adoption growing</li>
-                        <li>Limited supply (21M cap)</li>
-                        <li>Rahu = innovation & speculation</li>
-                    </ul>
+                    <h3><i class="fas fa-clock"></i> Exit Signal</h3>
+                    <p><strong>June 2026:</strong> Rahu exits Aquarius</p>
+                    <p>Reduce position by 50%+ before transit</p>
+                    <p>Rahu in Capricorn = less favorable</p>
                 </div>
             </div>
         </section>
 
-        <!-- Trading Rules Section -->
-        <section id="rules" class="rules-section">
-            <h2>📋 Golden Trading Rules</h2>
+        <!-- Books Section -->
+        <section id="books" class="books-section">
+            <h2><i class="fas fa-book"></i> Financial Astrology Library</h2>
+            <p class="section-subtitle">Select a book to use as context for AI Chat</p>
             
-            <div class="rules-grid">
-                <div class="rule-card">
-                    <span class="rule-number">1</span>
-                    <h3>Portfolio Allocation</h3>
-                    <p>Max <strong>30%</strong> in precious metals (Gold + Silver)</p>
-                    <p>Max <strong>10%</strong> in Bitcoin</p>
-                    <p>Max <strong>10%</strong> in Copper</p>
+            <div class="books-grid">
+                <div class="book-card selected" data-book="general" onclick="selectBook('general')">
+                    <div class="book-cover">
+                        <i class="fas fa-star"></i>
+                    </div>
+                    <h3>General Financial Astrology</h3>
+                    <p>Commodity-planet associations, nakshatras, and trading principles</p>
+                    <span class="book-status"><i class="fas fa-check-circle"></i> Selected</span>
                 </div>
                 
-                <div class="rule-card">
-                    <span class="rule-number">2</span>
-                    <h3>Always Use Stop Losses</h3>
-                    <p>Gold: -5%</p>
-                    <p>Silver: -8%</p>
-                    <p>Copper: -10%</p>
-                    <p>Bitcoin: -15% (mental)</p>
+                <div class="book-card" data-book="gann" onclick="selectBook('gann')">
+                    <div class="book-cover">
+                        <i class="fas fa-chart-pie"></i>
+                    </div>
+                    <h3>W.D. Gann Methods</h3>
+                    <p>Time cycles, price squares, and geometric trading</p>
+                    <span class="book-status">Click to select</span>
                 </div>
                 
-                <div class="rule-card">
-                    <span class="rule-number">3</span>
-                    <h3>Book Profits in Tranches</h3>
-                    <p><strong>+3%:</strong> Book 25% of position</p>
-                    <p><strong>+5%:</strong> Book 25% more</p>
-                    <p><strong>+8%:</strong> Book 25% more</p>
-                    <p><strong>+12%:</strong> Book remaining 25%</p>
+                <div class="book-card" data-book="vedic" onclick="selectBook('vedic')">
+                    <div class="book-cover">
+                        <i class="fas fa-om"></i>
+                    </div>
+                    <h3>Vedic Astrology Trading</h3>
+                    <p>Nakshatra-based timing, planetary periods, and yogas</p>
+                    <span class="book-status">Click to select</span>
                 </div>
                 
-                <div class="rule-card">
-                    <span class="rule-number">4</span>
-                    <h3>Core Position</h3>
-                    <p>Always keep <strong>5-10%</strong> as long-term core</p>
-                    <p>Never sell core position</p>
-                    <p>Only trade the trading portion</p>
+                <div class="book-card" data-book="crawford" onclick="selectBook('crawford')">
+                    <div class="book-cover">
+                        <i class="fas fa-globe"></i>
+                    </div>
+                    <h3>Arch Crawford's Methods</h3>
+                    <p>Planetary cycles for market timing</p>
+                    <span class="book-status">Click to select</span>
                 </div>
                 
-                <div class="rule-card">
-                    <span class="rule-number">5</span>
-                    <h3>Never Chase</h3>
-                    <p>If up 5%+ in a day: <strong>Don't buy</strong></p>
-                    <p>If down 3%+: <strong>Check news, be cautious</strong></p>
-                    <p>Wait for pullbacks</p>
+                <div class="book-card" data-book="merriman" onclick="selectBook('merriman')">
+                    <div class="book-cover">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <h3>Raymond Merriman</h3>
+                    <p>MMA market analysis and forecasting</p>
+                    <span class="book-status">Click to select</span>
                 </div>
                 
-                <div class="rule-card">
-                    <span class="rule-number">6</span>
-                    <h3>Avoid Debilitated Planets</h3>
-                    <p><strong>NEVER buy</strong> when ruling planet is debilitated:</p>
-                    <p>❌ Gold: Sun in Libra (Oct-Nov)</p>
-                    <p>❌ Silver: Moon in Scorpio (2.5 days/month)</p>
-                    <p>❌ Copper: Venus in Virgo (Jul-Aug)</p>
+                <div class="book-card" data-book="personal" onclick="selectBook('personal')">
+                    <div class="book-cover">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <h3>Your Birth Chart</h3>
+                    <p>Personalized analysis based on your natal chart</p>
+                    <span class="book-status">Click to select</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- AI Chat Section -->
+        <section id="chat" class="chat-section">
+            <h2><i class="fas fa-robot"></i> AI Trading Advisor</h2>
+            <p class="section-subtitle">Ask questions about financial astrology, commodities, or trading strategies</p>
+            
+            <div class="chat-container">
+                <div class="book-context">
+                    <i class="fas fa-book-open"></i>
+                    <span>Context: </span>
+                    <strong id="selected-book-name">General Financial Astrology</strong>
+                </div>
+                
+                <div class="chat-messages" id="chat-messages">
+                    <div class="message assistant">
+                        <div class="message-avatar"><i class="fas fa-robot"></i></div>
+                        <div class="message-content">
+                            <p>👋 Hello! I'm your AI Trading Advisor powered by ZAI.</p>
+                            <p>I can help you with:</p>
+                            <ul>
+                                <li>🌟 Planetary influences on commodities</li>
+                                <li>📅 Best trading days and times</li>
+                                <li>📊 Risk management strategies</li>
+                                <li>🔮 Interpreting your birth chart for trading</li>
+                            </ul>
+                            <p>Select a book above to change my context, then ask your question!</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chat-input-container">
+                    <div class="quick-questions">
+                        <button onclick="askQuestion('What are the best days to buy gold this month?')">
+                            <i class="fas fa-coins"></i> Gold timing?
+                        </button>
+                        <button onclick="askQuestion('Should I hold or sell my copper position?')">
+                            <i class="fas fa-industry"></i> Copper advice?
+                        </button>
+                        <button onclick="askQuestion('What does my birth chart say about wealth?')">
+                            <i class="fas fa-user"></i> My wealth potential?
+                        </button>
+                        <button onclick="askQuestion('When is the next super bullish period for silver?')">
+                            <i class="fas fa-gem"></i> Silver timing?
+                        </button>
+                    </div>
+                    <div class="chat-input">
+                        <input type="text" id="user-input" placeholder="Ask about trading, astrology, or your portfolio..." 
+                               onkeypress="if(event.key==='Enter')sendMessage()">
+                        <button onclick="sendMessage()" class="send-btn">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
         </section>
 
         <!-- Calendar Section -->
         <section id="calendar" class="calendar-section">
-            <h2>📅 Upcoming Key Dates</h2>
+            <h2><i class="fas fa-calendar-alt"></i> Upcoming Key Dates</h2>
             
             <div class="calendar-grid">
                 <div class="date-card bullish">
                     <div class="date">Mar 20</div>
                     <div class="event">☀️ Sun enters Aries</div>
                     <div class="impact">SUPER BULLISH for Gold</div>
+                    <div class="countdown-small" id="countdown-mar20"></div>
                 </div>
                 
                 <div class="date-card bullish">
@@ -385,52 +569,68 @@
             </div>
         </section>
 
-        <!-- Quick Action Guide -->
-        <section class="action-guide">
-            <h2>⚡ Quick Action Guide</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>If Price...</th>
-                        <th>And Score...</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Up 0-3%</td>
-                        <td>≥5</td>
-                        <td class="buy">✅ Follow recommendation</td>
-                    </tr>
-                    <tr>
-                        <td>Up 3-5%</td>
-                        <td>Any</td>
-                        <td class="hold">⚪ Wait for dip or HOLD</td>
-                    </tr>
-                    <tr>
-                        <td>Up 5%+</td>
-                        <td>Any</td>
-                        <td class="avoid">🔴 Don't chase, wait for pullback</td>
-                    </tr>
-                    <tr>
-                        <td>Down 0-3%</td>
-                        <td>≥5</td>
-                        <td class="buy">✅ Good entry opportunity</td>
-                    </tr>
-                    <tr>
-                        <td>Down 3%+</td>
-                        <td>Any</td>
-                        <td class="caution">⚠️ Check news, be cautious</td>
-                    </tr>
-                </tbody>
-            </table>
+        <!-- Trading Rules Section -->
+        <section id="rules" class="rules-section">
+            <h2><i class="fas fa-gavel"></i> Golden Trading Rules</h2>
+            
+            <div class="rules-grid">
+                <div class="rule-card">
+                    <span class="rule-number">1</span>
+                    <h3>Portfolio Allocation</h3>
+                    <p>Max <strong>30%</strong> in precious metals</p>
+                    <p>Max <strong>10%</strong> in Bitcoin</p>
+                    <p>Max <strong>10%</strong> in Copper</p>
+                </div>
+                
+                <div class="rule-card">
+                    <span class="rule-number">2</span>
+                    <h3>Always Use Stop Losses</h3>
+                    <p>Gold: <strong>-5%</strong></p>
+                    <p>Silver: <strong>-8%</strong></p>
+                    <p>Copper: <strong>-10%</strong></p>
+                    <p>Bitcoin: <strong>-15%</strong> (mental)</p>
+                </div>
+                
+                <div class="rule-card">
+                    <span class="rule-number">3</span>
+                    <h3>Book Profits in Tranches</h3>
+                    <p><strong>+3%:</strong> Book 25%</p>
+                    <p><strong>+5%:</strong> Book 25%</p>
+                    <p><strong>+8%:</strong> Book 25%</p>
+                    <p><strong>+12%:</strong> Book 25%</p>
+                </div>
+                
+                <div class="rule-card">
+                    <span class="rule-number">4</span>
+                    <h3>Keep Core Position</h3>
+                    <p>Always maintain <strong>5-10%</strong> as long-term core</p>
+                    <p>Never sell core position</p>
+                </div>
+                
+                <div class="rule-card">
+                    <span class="rule-number">5</span>
+                    <h3>Never Chase</h3>
+                    <p>Up 5%+: <strong>Don't buy</strong></p>
+                    <p>Down 3%+: <strong>Check news</strong></p>
+                </div>
+                
+                <div class="rule-card">
+                    <span class="rule-number">6</span>
+                    <h3>Avoid Debilitated Planets</h3>
+                    <p>❌ Gold: Sun in Libra (Oct-Nov)</p>
+                    <p>❌ Silver: Moon in Scorpio</p>
+                    <p>❌ Copper: Venus in Virgo (Jul-Aug)</p>
+                </div>
+            </div>
         </section>
     </main>
 
     <footer>
-        <p>🌟 Financial Astrology Trading Strategies</p>
-        <p>Generated: March 13, 2026 | For educational purposes only</p>
-        <p>⚠️ Not financial advice. Always do your own research.</p>
+        <div class="footer-content">
+            <p>🌟 Financial Astrology Trading Strategies</p>
+            <p>Generated: March 13, 2026 | Powered by ZAI AI</p>
+            <p class="disclaimer">⚠️ Not financial advice. Always do your own research.</p>
+        </div>
     </footer>
 
     <script src="script.js"></script>
