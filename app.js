@@ -206,9 +206,70 @@ function setAgentStatus(text) {
     if (badge) badge.textContent = text;
 }
 
+function applyChatWidth(width) {
+    const nextWidth = Math.max(320, Math.min(720, Math.round(width)));
+    document.documentElement.style.setProperty('--chat-w', `${nextWidth}px`);
+    localStorage.setItem('chatPanelWidth', String(nextWidth));
+    return nextWidth;
+}
+
+function initChatResize() {
+    const panel = document.querySelector('.chat-panel');
+    const resizer = document.getElementById('chat-resizer');
+    if (!panel || !resizer) return;
+
+    const restoreWidth = () => {
+        if (window.innerWidth <= 1100) {
+            document.documentElement.style.removeProperty('--chat-w');
+            return;
+        }
+        const stored = Number(localStorage.getItem('chatPanelWidth'));
+        if (Number.isFinite(stored)) applyChatWidth(stored);
+    };
+
+    restoreWidth();
+
+    let startX = 0;
+    let startWidth = 0;
+
+    const onPointerMove = event => {
+        const delta = startX - event.clientX;
+        applyChatWidth(startWidth + delta);
+        Object.values(state.charts).forEach(chart => chart?.resize());
+    };
+
+    const onPointerUp = () => {
+        panel.classList.remove('is-resizing');
+        document.body.style.userSelect = '';
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    resizer.addEventListener('pointerdown', event => {
+        if (window.innerWidth <= 1100) return;
+        startX = event.clientX;
+        startWidth = panel.getBoundingClientRect().width;
+        panel.classList.add('is-resizing');
+        document.body.style.userSelect = 'none';
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+    });
+
+    window.addEventListener('resize', restoreWidth);
+}
+
 function buildChartLabels(points) {
     if (!Array.isArray(points)) return getDayLabels(7);
-    return points.map(point => point.label || '');
+    const hasDuplicateWeekdays = points.some((point, index) => {
+        const weekday = point.weekday || point.label || '';
+        return points.findIndex(item => (item.weekday || item.label || '') === weekday) !== index;
+    });
+    return points.map(point => {
+        if (hasDuplicateWeekdays && point.date) {
+            return formatChartDate(point.date);
+        }
+        return point.weekday || point.label || (point.date ? formatWeekday(point.date) : '');
+    });
 }
 
 function toChartPoints(prices, timestamps = []) {
@@ -217,10 +278,13 @@ function toChartPoints(prices, timestamps = []) {
             const value = Number(price);
             if (!Number.isFinite(value)) return null;
             const rawTime = timestamps[index];
-            const label = rawTime
-                ? new Date(rawTime * 1000).toLocaleDateString('en-US', { weekday: 'short' })
+            const date = rawTime
+                ? new Date(rawTime * 1000).toISOString().slice(0, 10)
+                : '';
+            const weekday = date
+                ? formatWeekday(date)
                 : getDayLabels(prices.length)[index] || '';
-            return { label, price: value };
+            return { date, weekday, label: weekday, price: value };
         })
         .filter(Boolean);
 }
@@ -231,13 +295,16 @@ function toCoinGeckoChartPoints(prices) {
             const timestamp = Array.isArray(entry) ? entry[0] : null;
             const value = Array.isArray(entry) ? Number(entry[1]) : NaN;
             if (!timestamp || !Number.isFinite(value)) return null;
+            const date = new Date(timestamp).toISOString().slice(0, 10);
             return {
-                label: new Date(timestamp).toLocaleDateString('en-US', { weekday: 'short' }),
+                date,
+                weekday: formatWeekday(date),
+                label: formatWeekday(date),
                 price: value
             };
         })
         .filter(Boolean)
-        .filter((point, index, arr) => index === arr.findIndex(item => item.label === point.label))
+        .filter((point, index, arr) => index === arr.findIndex(item => item.date === point.date))
         .slice(-7);
 }
 
@@ -381,7 +448,9 @@ function normalizeAlphaPayload(json, symbol) {
             const value = parseAlphaRowClose(timeSeries[d]);
             if (!Number.isFinite(value)) return null;
             return {
-                label: new Date(d).toLocaleDateString('en-US', { weekday: 'short' }),
+                date: d,
+                weekday: formatWeekday(d),
+                label: formatWeekday(d),
                 price: value
             };
         })
@@ -730,8 +799,16 @@ function getDayLabels(days) {
     return Array.from({ length: days }, (_, i) => {
         const d = new Date();
         d.setDate(d.getDate() - (days - 1 - i));
-        return d.toLocaleDateString('en-US', { weekday: 'short' });
+        return formatWeekday(d);
     });
+}
+
+function formatWeekday(value) {
+    return new Date(value).toLocaleDateString('en-US', { weekday: 'short' });
+}
+
+function formatChartDate(value) {
+    return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function updateCharts() {
@@ -771,9 +848,17 @@ function loadPriceHistory() {
                 if (Array.isArray(parsed[key])) {
                     state.priceHistory[key] = parsed[key]
                         .map(item => ({
-                            label: item.label || (item.time
-                                ? new Date(item.time).toLocaleDateString('en-US', { weekday: 'short' })
+                            date: item.date || (item.time
+                                ? new Date(item.time).toISOString().slice(0, 10)
                                 : ''),
+                            weekday: item.weekday || item.label || (item.time
+                                ? formatWeekday(item.time)
+                                : ''),
+                            label: item.label || item.weekday || (item.date
+                                ? formatWeekday(item.date)
+                                : item.time
+                                    ? formatWeekday(item.time)
+                                    : ''),
                             price: Number(item.price)
                         }))
                         .filter(item => Number.isFinite(item.price))
@@ -1315,6 +1400,7 @@ function updateCountdowns() {
 document.addEventListener('DOMContentLoaded', () => {
     loadPriceHistory();
     loadChatHistory();
+    initChatResize();
     initCharts();
     refreshAllData();
     updateCountdowns();
