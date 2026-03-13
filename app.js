@@ -675,11 +675,27 @@ function addMessageToUI(role, content) {
 }
 
 function formatContent(text) {
+    // Use marked.js for markdown rendering if available
+    if (typeof marked !== 'undefined') {
+        try {
+            return marked.parse(text);
+        } catch (e) {
+            console.warn('Marked parse error:', e);
+        }
+    }
+    
+    // Fallback: basic markdown
     return text
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/`(.*?)`/g, '<code>$1</code>')
+        .replace(/^### (.*$)/gm, '<h4>$1</h4>')
+        .replace(/^## (.*$)/gm, '<h3>$1</h3>')
+        .replace(/^# (.*$)/gm, '<h2>$1</h2>')
+        .replace(/^- (.*$)/gm, '<li>$1</li>')
+        .replace(/\n\n/g, '</p><p>')
         .replace(/\n/g, '<br>')
-        .replace(/- (.*?)(<br>|$)/g, '• $1$2');
+        .replace(/<li>(.*?)<\/li>/g, '<li>$1</li>');
 }
 
 // Streaming cursor animation

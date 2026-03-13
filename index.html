@@ -6,50 +6,51 @@
     <title>Astro Trading Dashboard</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <!-- Left Sidebar -->
     <aside class="sidebar">
         <div class="sidebar-header">
-            <span class="logo">🌟</span>
+            <span class="logo">★</span>
             <span class="title">Astro Trading</span>
         </div>
         
         <nav class="nav-menu">
             <div class="nav-section">
-                <span class="nav-label">DASHBOARD</span>
+                <span class="nav-label">Dashboard</span>
                 <button class="nav-btn active" data-view="overview">
-                    <span class="icon">📊</span> Overview
+                    <span class="icon">○</span> Overview
                 </button>
             </div>
             
             <div class="nav-section">
-                <span class="nav-label">COMMODITIES</span>
+                <span class="nav-label">Commodities</span>
                 <button class="nav-btn" data-view="gold">
-                    <span class="icon">🥇</span> Gold
+                    <span class="icon">●</span> Gold
                     <span class="badge" id="gold-badge">--</span>
                 </button>
                 <button class="nav-btn" data-view="silver">
-                    <span class="icon">🥈</span> Silver
+                    <span class="icon">●</span> Silver
                     <span class="badge" id="silver-badge">--</span>
                 </button>
                 <button class="nav-btn" data-view="copper">
-                    <span class="icon">🥉</span> Copper
+                    <span class="icon">●</span> Copper
                     <span class="badge" id="copper-badge">--</span>
                 </button>
                 <button class="nav-btn" data-view="bitcoin">
-                    <span class="icon">₿</span> Bitcoin
+                    <span class="icon">●</span> Bitcoin
                     <span class="badge" id="btc-badge">--</span>
                 </button>
             </div>
             
             <div class="nav-section">
-                <span class="nav-label">TOOLS</span>
+                <span class="nav-label">Tools</span>
                 <button class="nav-btn" data-view="calendar">
-                    <span class="icon">📅</span> Key Dates
+                    <span class="icon">○</span> Key Dates
                 </button>
                 <button class="nav-btn" data-view="rules">
-                    <span class="icon">📋</span> Rules
+                    <span class="icon">○</span> Rules
                 </button>
             </div>
         </nav>
@@ -59,7 +60,7 @@
                 <span class="label">Updated</span>
                 <span class="time" id="last-update">--:--</span>
             </span>
-            <button class="refresh-btn" onclick="refreshAllData()">🔄</button>
+            <button class="refresh-btn" onclick="refreshAllData()">↻</button>
         </div>
     </aside>
 
@@ -75,7 +76,7 @@
             
             <div class="price-grid">
                 <div class="price-card gold" onclick="switchView('gold')">
-                    <div class="card-header"><span class="icon">🥇</span><span class="name">Tata Gold ETF</span></div>
+                    <div class="card-header"><span class="dot gold-dot"></span><span class="name">Tata Gold ETF</span></div>
                     <div class="card-body">
                         <span class="price" id="price-gold">₹--</span>
                         <span class="change" id="change-gold">--%</span>
@@ -87,7 +88,7 @@
                 </div>
                 
                 <div class="price-card silver" onclick="switchView('silver')">
-                    <div class="card-header"><span class="icon">🥈</span><span class="name">Groww Silver ETF</span></div>
+                    <div class="card-header"><span class="dot silver-dot"></span><span class="name">Groww Silver ETF</span></div>
                     <div class="card-body">
                         <span class="price" id="price-silver">₹--</span>
                         <span class="change" id="change-silver">--%</span>
@@ -99,7 +100,7 @@
                 </div>
                 
                 <div class="price-card copper" onclick="switchView('copper')">
-                    <div class="card-header"><span class="icon">🥉</span><span class="name">Hindustan Copper</span></div>
+                    <div class="card-header"><span class="dot copper-dot"></span><span class="name">Hindustan Copper</span></div>
                     <div class="card-body">
                         <span class="price" id="price-copper">₹--</span>
                         <span class="change" id="change-copper">--%</span>
@@ -111,7 +112,7 @@
                 </div>
                 
                 <div class="price-card bitcoin" onclick="switchView('bitcoin')">
-                    <div class="card-header"><span class="icon">₿</span><span class="name">BITCOIN</span></div>
+                    <div class="card-header"><span class="dot btc-dot"></span><span class="name">Bitcoin</span></div>
                     <div class="card-body">
                         <span class="price" id="price-btc">$--</span>
                         <span class="change" id="change-btc">--%</span>
@@ -124,7 +125,7 @@
             </div>
             
             <div class="chart-section">
-                <h2>📈 Price Comparison (7 Days)</h2>
+                <h2>Price Comparison (7 Days)</h2>
                 <div class="chart-wrapper"><canvas id="overviewChart"></canvas></div>
             </div>
             
@@ -138,8 +139,8 @@
         <!-- Gold -->
         <section id="view-gold" class="view">
             <header class="view-header">
-                <h1>🥇 Gold Strategy (Tata Gold ETF)</h1>
-                <p class="subtitle">Ruled by Sun ☀️ - Wealth, authority, vitality</p>
+                <h1>Gold Strategy <span class="ticker">(Tata Gold ETF)</span></h1>
+                <p class="subtitle">Ruled by Sun - Wealth, authority, vitality</p>
             </header>
             <div class="detail-grid">
                 <div class="detail-main">
@@ -185,8 +186,8 @@
         <!-- Silver -->
         <section id="view-silver" class="view">
             <header class="view-header">
-                <h1>🥈 Silver Strategy (Groww Silver ETF)</h1>
-                <p class="subtitle">Ruled by Moon 🌙 - Emotions, liquidity, intuition</p>
+                <h1>Silver Strategy <span class="ticker">(Groww Silver ETF)</span></h1>
+                <p class="subtitle">Ruled by Moon - Emotions, liquidity, intuition</p>
             </header>
             <div class="detail-grid">
                 <div class="detail-main">

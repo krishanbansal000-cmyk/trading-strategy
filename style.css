@@ -31,6 +31,7 @@ body {
     display: grid;
     grid-template-columns: var(--sidebar-w) 1fr var(--chat-w);
     min-height: 100vh;
+    overflow-x: hidden;
 }
 
 /* ========== LEFT SIDEBAR ========== */
@@ -136,6 +137,12 @@ body {
 
 .view-header { margin-bottom: 1.5rem; }
 .view-header h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem; }
+.view-header h1 .ticker { 
+    font-size: 0.9rem; 
+    font-weight: 400; 
+    color: var(--text-dim); 
+    margin-left: 0.5rem;
+}
 .view-header .subtitle { color: var(--text-secondary); font-size: 0.9rem; }
 
 /* ========== PRICE GRID ========== */
@@ -155,14 +162,26 @@ body {
     transition: all 0.2s;
 }
 
-.price-card:hover { transform: translateY(-2px); }
+.price-card:hover { transform: translateY(-2px); border-color: var(--text-dim); }
 .price-card.gold:hover { border-color: var(--gold); }
 .price-card.silver:hover { border-color: var(--silver); }
 .price-card.copper:hover { border-color: var(--copper); }
 .price-card.bitcoin:hover { border-color: var(--bitcoin); }
 
 .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
-.card-header .icon { font-size: 1.5rem; }
+
+/* Colored dots for commodities */
+.dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.gold-dot { background: var(--gold); }
+.silver-dot { background: var(--silver); }
+.copper-dot { background: var(--copper); }
+.btc-dot { background: var(--bitcoin); }
+
 .card-header .name { font-size: 0.8rem; color: var(--text-secondary); }
 
 .card-body { margin-bottom: 0.5rem; }
@@ -446,9 +465,39 @@ body {
     padding: 0.6rem 0.8rem;
     border-radius: 10px;
     font-size: 0.85rem;
-    line-height: 1.4;
+    line-height: 1.5;
+    max-width: 100%;
+    overflow-wrap: break-word;
 }
 .msg.user p { background: #1e3a5f; }
+
+/* Markdown styling in chat */
+.msg p h1, .msg p h2, .msg p h3, .msg p h4 {
+    margin: 0.5rem 0 0.25rem;
+    color: var(--text-primary);
+}
+.msg p h2 { font-size: 1rem; }
+.msg p h3 { font-size: 0.95rem; }
+.msg p h4 { font-size: 0.9rem; }
+.msg p ul, .msg p ol { margin: 0.3rem 0 0.3rem 1.2rem; }
+.msg p li { margin: 0.15rem 0; }
+.msg p code {
+    background: rgba(255,255,255,0.1);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.8rem;
+}
+.msg p pre {
+    background: rgba(0,0,0,0.3);
+    padding: 0.5rem;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin: 0.3rem 0;
+}
+.msg p strong { color: var(--gold); }
+.msg p a { color: var(--gold); text-decoration: none; }
+.msg p a:hover { text-decoration: underline; }
 
 .chat-input-area {
     padding: 0.75rem;
