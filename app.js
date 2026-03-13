@@ -534,9 +534,13 @@ async function sendChat() {
     // Get combined context
     const context = getContextForCurrentView();
     
-    // Try primary model, fallback to glm-4.7-flash if rate limited
+    // Create streaming message placeholder
+    const streamingMsgId = 'stream-' + Date.now();
+    addStreamingMessage(streamingMsgId);
+    
+    // Try primary model, fallback to glm-4.7-flashx if rate limited
     const models = [CONFIG.zai.model, CONFIG.zai.fallbackModel];
-    let reply = null;
+    let fullReply = '';
     let lastError = null;
     
     for (const model of models) {
@@ -554,25 +558,53 @@ async function sendChat() {
                         ...state.chatHistory.slice(-10)
                     ],
                     max_tokens: 1500,
-                    temperature: 0.7
+                    temperature: 0.7,
+                    stream: true  // Enable streaming
                 })
             });
             
-            const json = await res.json();
-            
-            if (json.choices?.[0]?.message?.content) {
-                reply = json.choices[0].message.content;
-                
-                // Add model indicator if using fallback
-                if (model === CONFIG.zai.fallbackModel) {
-                    console.log('Using fallback model: glm-4.7-flash');
-                }
-                break;  // Success, exit loop
-            } else if (json.error) {
-                lastError = json.error;
-                console.warn(`Model ${model} failed:`, json.error.message);
-                // Continue to next model
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.error?.message || 'API error');
             }
+            
+            // Handle streaming response
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = chunk.split('\n').filter(line => line.trim() !== '');
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6);
+                        if (data === '[DONE]') continue;
+                        
+                        try {
+                            const json = JSON.parse(data);
+                            const content = json.choices?.[0]?.delta?.content;
+                            if (content) {
+                                fullReply += content;
+                                updateStreamingMessage(streamingMsgId, fullReply);
+                            }
+                        } catch (e) {
+                            // Skip invalid JSON
+                        }
+                    }
+                }
+            }
+            
+            if (fullReply) {
+                finalizeStreamingMessage(streamingMsgId, fullReply);
+                state.chatHistory.push({ role: 'assistant', content: fullReply });
+                saveChatHistory();
+                return;  // Success
+            }
+            
         } catch (e) {
             lastError = e;
             console.error(`Model ${model} error:`, e);
@@ -580,16 +612,49 @@ async function sendChat() {
         }
     }
     
-    if (reply) {
-        addMessageToUI('assistant', reply);
-        state.chatHistory.push({ role: 'assistant', content: reply });
-        saveChatHistory();
-    } else {
-        const errorMsg = lastError?.message?.includes('rate') || lastError?.message?.includes('limit')
-            ? '⚠️ Rate limit reached. Please try again in a few minutes.'
-            : '⚠️ Connection error. Please try again.';
-        addMessageToUI('assistant', errorMsg);
+    // If we get here, both models failed
+    removeStreamingMessage(streamingMsgId);
+    const errorMsg = lastError?.message?.includes('rate') || lastError?.message?.includes('limit')
+        ? '⚠️ Rate limit reached. Please try again in a few minutes.'
+        : '⚠️ Connection error. Please try again.';
+    addMessageToUI('assistant', errorMsg);
+}
+
+function addStreamingMessage(id) {
+    const container = document.getElementById('chat-messages');
+    const div = document.createElement('div');
+    div.className = 'msg streaming';
+    div.id = id;
+    div.innerHTML = `<span class="avatar">🤖</span><p><span class="streaming-cursor">▊</span></p>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function updateStreamingMessage(id, content) {
+    const el = document.getElementById(id);
+    if (el) {
+        const p = el.querySelector('p');
+        if (p) {
+            p.innerHTML = formatContent(content) + '<span class="streaming-cursor">▊</span>';
+        }
+        el.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
+}
+
+function finalizeStreamingMessage(id, content) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.className = 'msg';
+        const p = el.querySelector('p');
+        if (p) {
+            p.innerHTML = formatContent(content);
+        }
+    }
+}
+
+function removeStreamingMessage(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
 }
 
 function askAI(question) {
@@ -616,6 +681,22 @@ function formatContent(text) {
         .replace(/\n/g, '<br>')
         .replace(/- (.*?)(<br>|$)/g, '• $1$2');
 }
+
+// Streaming cursor animation
+const style = document.createElement('style');
+style.textContent = `
+    .streaming-cursor {
+        animation: blink 0.7s infinite;
+    }
+    @keyframes blink {
+        0%, 50% { opacity: 1; }
+        51%, 100% { opacity: 0; }
+    }
+    .msg.streaming {
+        opacity: 0.9;
+    }
+`;
+document.head.appendChild(style);
 
 // ========== COUNTDOWNS ==========
 function updateCountdowns() {
