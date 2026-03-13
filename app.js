@@ -1173,7 +1173,16 @@ async function sendChat() {
             throw new Error('Empty agent response');
         } catch (agentError) {
             console.error('Agent backend error:', agentError);
-            setAgentStatus('Codex unavailable, using Z.ai');
+            setAgentStatus('Codex offline');
+            removeStreamingMessage(streamingMsgId);
+            const message = String(agentError?.message || '');
+            const isStaticDeploy = window.location.hostname.includes('github.io');
+            const codexError = (isStaticDeploy || message.includes('(405)'))
+                ? '⚠️ Codex mode requires a real backend server. This GitHub Pages deployment returns 405 for POST /api/agent/stream, so Codex cannot run here. Run the app with `npm start` or deploy `server.js` on a real host.'
+                : `⚠️ ${message || 'Codex backend unavailable.'}`;
+            addMessageToUI('assistant', codexError);
+            state.isSending = false;
+            return;
         }
     }
     
