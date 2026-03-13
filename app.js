@@ -189,7 +189,10 @@ async function fetchYahooFinance(symbol) {
     }
     
     try {
-        const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=7d`);
+        // Use CORS proxy for Yahoo Finance API
+        const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=7d`;
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`;
+        const res = await fetch(proxyUrl);
         const json = await res.json();
         
         if (json.chart?.result?.[0]) {
