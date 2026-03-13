@@ -15,17 +15,19 @@ const CONFIG = {
 
 // ETF Symbols on NSE
 const ETF_SYMBOLS = {
-    gold: ['TATAGOLD.NS', 'TATAGOLDETF.NS'],      // Tata Gold ETF
-    silver: ['GROWWSLVR.NS', 'GROWWSILVER.NS'],   // Groww Silver ETF  
+    gold: ['TATAGOLDETF.NS', 'TATAGOLD.NS'],      // Tata Gold ETF
+    silver: ['GROWWSILVER.NS', 'GROWWSLVR.NS'],   // Groww Silver ETF  
     copper: ['HINDCOPPER.NS', 'HINDCOPPER.BO']   // Hindustan Copper
 };
 
-// Yahoo proxy endpoints (stable CORS route first)
+// Yahoo proxy endpoints (wider fallback set for CORS stability)
 const YAHOO_CHART_BASE = 'query1.finance.yahoo.com/v8/finance/chart';
 const YAHOO_PROXY_URLS = [
     (url) => `https://r.jina.ai/http://${url}`,
     (url) => `https://r.jina.ai/https://${url}`,
-    (url) => `https://${url}`
+    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://${url}`)}`,
+    (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(`https://${url}`)}`,
+    (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(`https://${url}`)}`
 ];
 
 // ========== BOOK CONTEXTS ==========
@@ -196,95 +198,219 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 
 // ========== PRICING APIS ==========
 
-// Yahoo Finance API (for all NSE ETFs)
-async function fetchYahooFinance(symbol) {
-    const symbolList = Array.isArray(symbol) ? symbol : [symbol];
-    const cacheKey = `yf_${symbolList[0]}`;
-    const cached = localStorage.getItem(cacheKey);
-    
-    if (cached) {
-        const { data, time } = JSON.parse(cached);
-        if (Date.now() - time < CONFIG.alphavantage.cacheTime) return data;
-    }
-    
-    try {
-        const timeoutMs = 9000;
-        const query = 'interval=1d&range=7d&includePrePost=false';
-        
-        for (const symbolTry of symbolList) {
-            for (const proxyBuilder of YAHOO_PROXY_URLS) {
-                const rawUrl = `${YAHOO_CHART_BASE}/${symbolTry}?${query}`;
-                const proxyUrl = proxyBuilder(rawUrl);
-                
-                try {
-                    const controller = new AbortController();
-                    const timer = setTimeout(() => controller.abort(), timeoutMs);
-                    let res;
-                    try {
-                        res = await fetch(proxyUrl, { signal: controller.signal });
-                    } finally {
-                        clearTimeout(timer);
-                    }
-                    
-                    if (!res.ok) continue;
-                    
-                    const text = await res.text();
-                    let json = null;
-                    try {
-                        json = JSON.parse(text);
-                    } catch {
-                        const marker = 'Markdown Content:';
-                        const markerIndex = text.lastIndexOf(marker);
-                        if (markerIndex !== -1) {
-                            json = JSON.parse(text.slice(markerIndex + marker.length).trim());
-                        }
-                    }
-                    
-                    if (!json?.chart?.result?.[0]) continue;
-                    
-                    const result = json.chart.result[0];
-                    const meta = result.meta || {};
-                    const prices = result.indicators?.quote?.[0]?.close || [];
-                    const closes = prices.filter(p => p !== null && Number.isFinite(p));
-                    const currentPrice = Number((meta.regularMarketPrice || closes[closes.length - 1] || 0).toFixed(2));
-                    const previousClose = Number(
-                        (meta.previousClose || meta.chartPreviousClose || closes[closes.length - 2] || currentPrice).toFixed(2)
-                    );
-                    const change = previousClose > 0 ? ((currentPrice - previousClose) / previousClose) * 100 : 0;
-                    
-                    const data = {
-                        symbol: meta.symbol || symbolTry,
-                        price: currentPrice.toFixed(2),
-                        change: change.toFixed(2),
-                        changePercent: change.toFixed(2) + '%',
-                        prices: closes
-                    };
-                    
-                    localStorage.setItem(cacheKey, JSON.stringify({ data, time: Date.now() }));
-                    return data;
-                }
-                catch (e) {
-                    console.warn(`Yahoo fetch failed for ${symbolTry} via ${proxyUrl}`, e);
-                    continue;
-                }
-            }
+function dedupeSymbols(list) {
+    return [...new Set(list.filter(Boolean).map(s => String(s).trim().toUpperCase()))];
+}
+
+function buildSymbolFallbacks(symbols, useBoFirst = false) {
+    const uniqueSymbols = dedupeSymbols(Array.isArray(symbols) ? symbols : [symbols]);
+    const fallbackList = [];
+
+    for (const symbol of uniqueSymbols) {
+        const symbolUpper = symbol.toUpperCase();
+
+        if (!symbolUpper.endsWith('.NS') && !symbolUpper.endsWith('.BO')) {
+            fallbackList.push(symbolUpper);
+            continue;
         }
-    } catch (e) {
-        console.error('Yahoo Finance error:', e);
+
+        const boSymbol = symbolUpper.endsWith('.BO') ? symbolUpper : symbolUpper.replace(/\.NS$/i, '.BO');
+        const nsSymbol = symbolUpper.endsWith('.NS') ? symbolUpper : symbolUpper.replace(/\.BO$/i, '.NS');
+
+        if (useBoFirst) {
+            fallbackList.push(boSymbol);
+            if (nsSymbol !== boSymbol) fallbackList.push(nsSymbol);
+        } else {
+            fallbackList.push(nsSymbol);
+            if (boSymbol !== nsSymbol) fallbackList.push(boSymbol);
+        }
     }
 
-    if (cached) {
-        return JSON.parse(cached).data;
+    return dedupeSymbols(fallbackList);
+}
+
+function parseProxyJson(text) {
+    try {
+        return JSON.parse(text);
+    } catch {
+        const marker = 'Markdown Content:';
+        const markerIndex = text.lastIndexOf(marker);
+        if (markerIndex === -1) return null;
+        return JSON.parse(text.slice(markerIndex + marker.length).trim());
     }
-    
-    // Fallback: simulated based on realistic values for bootstrap only
+}
+
+function unpackAllOriginsPayload(payload) {
+    if (!payload || typeof payload !== 'object') return payload;
+    if (payload.contents && typeof payload.contents === 'string') {
+        return parseProxyJson(payload.contents);
+    }
+    return payload;
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 9000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        return { ok: res.ok, status: res.status, text: await res.text() };
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+function normalizeCloseArray(values) {
+    return (values || [])
+        .map(value => Number(value))
+        .filter(value => Number.isFinite(value));
+}
+
+function normalizeYahooPayload(json, symbol) {
+    const result = json?.chart?.result?.[0];
+    if (!result) return null;
+
+    const meta = result.meta || {};
+    const closes = normalizeCloseArray(result.indicators?.quote?.[0]?.close || []);
+    const currentPrice = Number(meta.regularMarketPrice || closes[closes.length - 1] || 0);
+    const previousClose = Number(meta.previousClose || meta.chartPreviousClose || closes[closes.length - 2] || currentPrice);
+
+    if (!Number.isFinite(currentPrice) || currentPrice <= 0) return null;
+
+    const change = previousClose > 0 ? ((currentPrice - previousClose) / previousClose) * 100 : 0;
     return {
-        ...getSimulatedPrice(symbolList[0]),
-        symbol: symbolList[0]
+        symbol: meta.symbol || symbol,
+        price: currentPrice.toFixed(2),
+        change: change.toFixed(2),
+        changePercent: `${change.toFixed(2)}%`,
+        prices: closes
     };
 }
 
-// Simulated price fallback
+function parseAlphaRowClose(row) {
+    if (!row || typeof row !== 'object') return NaN;
+    return Number(
+        row['4. close'] ??
+        row['5. adjusted close'] ??
+        row['5. adjusted_close'] ??
+        row['4. close*']
+    );
+}
+
+function normalizeAlphaPayload(json, symbol) {
+    const timeSeries = json['Time Series (Daily)'] || json['Daily Time Series'];
+    if (!timeSeries) return null;
+
+    const dates = Object.keys(timeSeries).sort();
+    if (!dates.length) return null;
+
+    const closes = dates
+        .map(d => ({ date: d, value: parseAlphaRowClose(timeSeries[d]) }))
+        .filter(item => Number.isFinite(item.value))
+        .map(item => item.value);
+
+    if (!closes.length) return null;
+
+    const latest = closes[closes.length - 1];
+    const previousClose = closes[closes.length - 2] || latest;
+    const change = previousClose > 0 ? ((latest - previousClose) / previousClose) * 100 : 0;
+    const recentDateValues = dates
+        .slice(-7)
+        .map(d => parseAlphaRowClose(timeSeries[d]))
+        .filter(value => Number.isFinite(value));
+
+    return {
+        symbol: json['Meta Data']?.['2. Symbol'] || symbol,
+        price: latest.toFixed(2),
+        change: change.toFixed(2),
+        changePercent: `${change.toFixed(2)}%`,
+        prices: recentDateValues
+    };
+}
+
+async function fetchYahooFinance(symbol) {
+    const symbolCandidates = buildSymbolFallbacks(symbol, false);
+    const cacheKey = `yf_${symbolCandidates[0]}`;
+    const cached = localStorage.getItem(cacheKey);
+    const cachedObj = cached ? JSON.parse(cached) : null;
+
+    if (cachedObj && Date.now() - cachedObj.time < CONFIG.alphavantage.cacheTime) {
+        return cachedObj.data;
+    }
+
+    const query = 'interval=1d&range=7d&includePrePost=false';
+    
+    for (const symbolTry of symbolCandidates) {
+        for (const proxyBuilder of YAHOO_PROXY_URLS) {
+            const rawUrl = `${YAHOO_CHART_BASE}/${symbolTry}?${query}`;
+            const proxyUrl = proxyBuilder(rawUrl);
+            
+            try {
+                const response = await fetchWithTimeout(proxyUrl);
+                if (!response.ok) continue;
+
+                let json = parseProxyJson(response.text);
+                json = unpackAllOriginsPayload(json);
+                const normalized = normalizeYahooPayload(json, symbolTry);
+
+                if (!normalized) continue;
+
+                localStorage.setItem(cacheKey, JSON.stringify({ data: normalized, time: Date.now() }));
+                return normalized;
+            } catch (e) {
+                console.warn(`Yahoo fetch failed for ${symbolTry} via ${proxyUrl}`, e);
+                continue;
+            }
+        }
+    }
+
+    console.info('Falling back to Alpha Vantage for', symbolCandidates[0]);
+    const alphaData = await fetchAlphavantageFinance(symbolCandidates);
+    if (alphaData) {
+        localStorage.setItem(cacheKey, JSON.stringify({ data: alphaData, time: Date.now() }));
+        return alphaData;
+    }
+
+    if (cachedObj?.data) {
+        return cachedObj.data;
+    }
+
+    // Fallback: simulated based on realistic values for bootstrap only
+    return {
+        ...getSimulatedPrice(symbolCandidates[0]),
+        symbol: symbolCandidates[0]
+    };
+}
+
+async function fetchAlphavantageFinance(symbols) {
+    const symbolCandidates = buildSymbolFallbacks(symbols, true);
+    const functions = ['TIME_SERIES_DAILY', 'TIME_SERIES_DAILY_ADJUSTED'];
+    const baseUrl = 'https://www.alphavantage.co/query';
+
+    for (const func of functions) {
+        for (const symbolTry of symbolCandidates) {
+            const url = `${baseUrl}?function=${func}&symbol=${encodeURIComponent(symbolTry)}&outputsize=compact&apikey=${CONFIG.alphavantage.key}`;
+            try {
+                const response = await fetchWithTimeout(url, undefined, 12000);
+                if (!response.ok) continue;
+
+                const json = parseProxyJson(response.text);
+                if (!json || json['Error Message'] || json.Note || json.Information) continue;
+
+                const normalized = normalizeAlphaPayload(json, symbolTry);
+                if (!normalized) continue;
+
+                return normalized;
+            } catch (e) {
+                console.warn(`Alpha Vantage fetch failed for ${symbolTry} (${func})`, e);
+            }
+        }
+    }
+
+    return null;
+}
+
+// Simulated price fallback (used only if all providers fail)
 function getSimulatedPrice(symbol) {
     const basePrices = {
         'TATAGOLD.NS': 15,
