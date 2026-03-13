@@ -625,7 +625,7 @@ function addStreamingMessage(id) {
     const div = document.createElement('div');
     div.className = 'msg streaming';
     div.id = id;
-    div.innerHTML = `<span class="avatar">🤖</span><p><span class="streaming-cursor">▊</span></p>`;
+    div.innerHTML = '<span class="avatar">AI</span><p><span class="streaming-cursor">|</span></p>';
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
 }
@@ -635,7 +635,7 @@ function updateStreamingMessage(id, content) {
     if (el) {
         const p = el.querySelector('p');
         if (p) {
-            p.innerHTML = formatContent(content) + '<span class="streaming-cursor">▊</span>';
+            p.innerHTML = formatContent(content) + '<span class="streaming-cursor">|</span>';
         }
         el.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
@@ -667,7 +667,7 @@ function addMessageToUI(role, content) {
     const div = document.createElement('div');
     div.className = `msg ${role === 'user' ? 'user' : ''}`;
     
-    const avatar = role === 'user' ? '👤' : '🤖';
+    const avatar = role === 'user' ? 'You' : 'AI';
     div.innerHTML = `<span class="avatar">${avatar}</span><p>${formatContent(content)}</p>`;
     
     container.appendChild(div);

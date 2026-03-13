@@ -459,7 +459,20 @@ body {
 
 .msg { display: flex; gap: 0.5rem; max-width: 100%; }
 .msg.user { flex-direction: row-reverse; }
-.msg .avatar { font-size: 1rem; flex-shrink: 0; }
+.msg .avatar { 
+    font-size: 0.7rem; 
+    font-weight: 600;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--bg-hover);
+    color: var(--text-dim);
+}
+.msg.user .avatar { background: #1e3a5f; color: var(--text-primary); }
 .msg p {
     background: var(--bg-card);
     padding: 0.6rem 0.8rem;
