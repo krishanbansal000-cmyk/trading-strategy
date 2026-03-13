@@ -378,6 +378,13 @@ body {
     padding: 1.25rem;
     border: 1px solid var(--border-color);
     height: 320px;
+    width: 100%;
+    position: relative;
+}
+
+.chart-wrapper canvas {
+    width: 100% !important;
+    height: 100% !important;
 }
 
 /* ========== STATS GRID ========== */
