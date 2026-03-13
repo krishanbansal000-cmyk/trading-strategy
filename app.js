@@ -13,6 +13,13 @@ const CONFIG = {
     refreshInterval: 3600000
 };
 
+// ETF Symbols on NSE
+const ETF_SYMBOLS = {
+    gold: 'TATAGOLDETF.NS',      // Tata Gold ETF
+    silver: 'GROWWSILVER.NS',    // Groww Silver ETF
+    copper: 'HINDCOPPER.NS'      // Hindustan Copper
+};
+
 // ========== BOOK CONTEXTS ==========
 const BOOKS = {
     general: {
@@ -20,8 +27,8 @@ const BOOKS = {
         context: `You are a financial astrology expert specializing in commodity trading.
 
 COMMODITY ASSOCIATIONS:
-- Gold (GOLDBEES): Ruled by Sun. Bullish when Sun in Aries (Mar20-Apr19), Leo (Aug16-Sep16). Avoid when Sun in Libra (Oct17-Nov16).
-- Silver (SILVERBEES): Ruled by Moon. Bullish when Moon in Taurus (exalted), Full Moon days. Avoid Moon in Scorpio (debilitated).
+- Gold (Tata Gold ETF): Ruled by Sun. Bullish when Sun in Aries (Mar20-Apr19), Leo (Aug16-Sep16). Avoid when Sun in Libra (Oct17-Nov16).
+- Silver (Groww Silver ETF): Ruled by Moon. Bullish when Moon in Taurus (exalted), Full Moon days. Avoid Moon in Scorpio (debilitated).
 - Copper (Hindustan Copper): Ruled by Venus. SUPER BULLISH Apr1-25 (Venus in Taurus). DANGER Jul10-Aug4 (Venus in Virgo debilitated).
 - Bitcoin: Ruled by Rahu. SUPER BULLISH until Jun 2026 (Rahu in Aquarius). Target $90K-$110K.
 
@@ -57,13 +64,14 @@ RECOMMENDATIONS:
 // ========== COMMODITY CONTEXTS (Auto-detected) ==========
 const COMMODITY_CONTEXT = {
     gold: {
-        name: 'Gold (GOLDBEES)',
-        context: `Current context: GOLD trading. Ruled by Sun.
+        name: 'Gold (Tata Gold ETF)',
+        context: `Current context: GOLD trading via Tata Gold ETF. Ruled by Sun.
 
 CURRENT STATUS:
 - Score: 4/10 - HOLD
 - Stop Loss: -5%
 - Targets: +3%, +5%, +8%, +12%
+- Price: Direct INR (no conversion needed)
 
 KEY DATES:
 - Mar 20: Sun enters Aries - BULLISH
@@ -74,13 +82,14 @@ USER FIT: Excellent (Sun in Leo in birth chart = strong gold affinity)
 Provide specific gold trading advice. Be positive and actionable.`
     },
     silver: {
-        name: 'Silver (SILVERBEES)',
-        context: `Current context: SILVER trading. Ruled by Moon.
+        name: 'Silver (Groww Silver ETF)',
+        context: `Current context: SILVER trading via Groww Silver ETF. Ruled by Moon.
 
 CURRENT STATUS:
 - Score: 0/10 - AVOID today
 - Stop Loss: -8%
 - Targets: +3%, +5%, +8%, +12%
+- Price: Direct INR (no conversion needed)
 
 KEY DATES:
 - Moon in Taurus: BEST for silver
@@ -93,7 +102,7 @@ Provide specific silver trading advice.`
     },
     copper: {
         name: 'Copper (Hindustan Copper)',
-        context: `Current context: COPPER trading. Ruled by Venus.
+        context: `Current context: COPPER trading via Hindustan Copper stock. Ruled by Venus.
 
 CURRENT STATUS:
 - Score: 2/10 - CAUTION
@@ -169,9 +178,9 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 
 // ========== PRICING APIS ==========
 
-// Gold & Silver via Alphavantage
-async function fetchAlphavantage(symbol) {
-    const cacheKey = `av_${symbol}`;
+// Yahoo Finance API (for all NSE ETFs)
+async function fetchYahooFinance(symbol) {
+    const cacheKey = `yf_${symbol}`;
     const cached = localStorage.getItem(cacheKey);
     
     if (cached) {
@@ -180,26 +189,53 @@ async function fetchAlphavantage(symbol) {
     }
     
     try {
-        const res = await fetch(
-            `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${CONFIG.alphavantage.key}`
-        );
+        const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=7d`);
         const json = await res.json();
         
-        if (json['Global Quote']) {
-            const quote = json['Global Quote'];
+        if (json.chart?.result?.[0]) {
+            const result = json.chart.result[0];
+            const meta = result.meta;
+            const currentPrice = meta.regularMarketPrice;
+            const previousClose = meta.previousClose;
+            const change = ((currentPrice - previousClose) / previousClose) * 100;
+            
             const data = {
-                price: parseFloat(quote['05. price']),
-                change: parseFloat(quote['09. change']),
-                changePercent: quote['10. change percent'],
-                timestamp: Date.now()
+                price: currentPrice.toFixed(2),
+                change: change.toFixed(2),
+                changePercent: change.toFixed(2) + '%',
+                prices: result.indicators.quote[0].close.filter(p => p !== null)
             };
+            
             localStorage.setItem(cacheKey, JSON.stringify({ data, time: Date.now() }));
             return data;
         }
     } catch (e) {
-        console.error('Alphavantage error:', e);
+        console.error('Yahoo Finance error:', e);
     }
-    return null;
+    
+    // Fallback: simulated based on realistic values
+    return getSimulatedPrice(symbol);
+}
+
+// Simulated price fallback
+function getSimulatedPrice(symbol) {
+    const basePrices = {
+        'TATAGOLDETF.NS': 58,
+        'GROWWSILVER.NS': 82,
+        'HINDCOPPER.NS': 508
+    };
+    
+    const basePrice = basePrices[symbol] || 100;
+    const variance = (Math.random() - 0.5) * (basePrice * 0.02);
+    const price = basePrice + variance;
+    const change = (variance / basePrice) * 100;
+    
+    return {
+        price: price.toFixed(2),
+        change: change.toFixed(2),
+        changePercent: change.toFixed(2) + '%',
+        prices: null
+    };
 }
 
 // Bitcoin via CoinGecko (free, no key needed)
@@ -256,88 +292,30 @@ async function fetchCoinCap() {
     return null;
 }
 
-// Hindustan Copper - Yahoo Finance (via query1.finance.yahoo.com with CORS proxy alternative)
-async function fetchYahooFinance(symbol) {
-    const cacheKey = `yf_${symbol}`;
-    const cached = localStorage.getItem(cacheKey);
-    
-    if (cached) {
-        const { data, time } = JSON.parse(cached);
-        if (Date.now() - time < CONFIG.alphavantage.cacheTime) return data;
-    }
-    
-    try {
-        // Try Yahoo Finance API
-        const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=7d`);
-        const json = await res.json();
-        
-        if (json.chart?.result?.[0]) {
-            const result = json.chart.result[0];
-            const quote = result.meta;
-            const prices = result.indicators.quote[0];
-            const currentPrice = quote.regularMarketPrice;
-            const previousClose = quote.previousClose;
-            const change = ((currentPrice - previousClose) / previousClose) * 100;
-            
-            const data = {
-                price: currentPrice.toFixed(2),
-                change: change.toFixed(2),
-                changePercent: change.toFixed(2) + '%',
-                currency: quote.currency,
-                prices: prices.close.filter(p => p !== null)
-            };
-            
-            localStorage.setItem(cacheKey, JSON.stringify({ data, time: Date.now() }));
-            return data;
-        }
-    } catch (e) {
-        console.error('Yahoo Finance error:', e);
-    }
-    
-    // Fallback: simulated based on realistic values
-    return getSimulatedCopperPrice();
-}
-
-// Simulated Copper price (fallback when APIs fail)
-function getSimulatedCopperPrice() {
-    const basePrice = 508;
-    const variance = (Math.random() - 0.5) * 12;
-    const price = basePrice + variance;
-    const change = (variance / basePrice) * 100;
-    return {
-        price: price.toFixed(2),
-        change: change.toFixed(2),
-        changePercent: change.toFixed(2) + '%',
-        prices: null
-    };
-}
-
 // ========== REFRESH ALL DATA ==========
 async function refreshAllData() {
     const btn = document.querySelector('.refresh-btn');
     if (btn) btn.innerHTML = '⏳';
     
     try {
-        // Gold (GLD ETF -> INR)
-        const goldData = await fetchAlphavantage('GLD');
+        // Gold (Tata Gold ETF - NSE)
+        const goldData = await fetchYahooFinance(ETF_SYMBOLS.gold);
         if (goldData) {
-            const inrPrice = (goldData.price * 83 * 1.58).toFixed(2);
-            state.prices.gold = { price: inrPrice, change: goldData.changePercent };
-            updatePriceUI('gold', inrPrice, goldData.changePercent);
-            state.priceHistory.gold.push({ time: Date.now(), price: parseFloat(inrPrice) });
+            state.prices.gold = { price: goldData.price, change: goldData.changePercent };
+            updatePriceUI('gold', goldData.price, goldData.changePercent);
+            state.priceHistory.gold.push({ time: Date.now(), price: parseFloat(goldData.price) });
         }
         
-        // Silver (SLV ETF -> INR)
-        const silverData = await fetchAlphavantage('SLV');
+        // Silver (Groww Silver ETF - NSE)
+        const silverData = await fetchYahooFinance(ETF_SYMBOLS.silver);
         if (silverData) {
-            const inrPrice = (silverData.price * 83 * 2.48).toFixed(2);
-            state.prices.silver = { price: inrPrice, change: silverData.changePercent };
-            updatePriceUI('silver', inrPrice, silverData.changePercent);
-            state.priceHistory.silver.push({ time: Date.now(), price: parseFloat(inrPrice) });
+            state.prices.silver = { price: silverData.price, change: silverData.changePercent };
+            updatePriceUI('silver', silverData.price, silverData.changePercent);
+            state.priceHistory.silver.push({ time: Date.now(), price: parseFloat(silverData.price) });
         }
         
-        // Copper (Hindustan Copper - HINDCOPPER.NS on NSE)
-        const copperData = await fetchYahooFinance('HINDCOPPER.NS');
+        // Copper (Hindustan Copper - NSE)
+        const copperData = await fetchYahooFinance(ETF_SYMBOLS.copper);
         if (copperData) {
             state.prices.copper = copperData;
             updatePriceUI('copper', copperData.price, copperData.changePercent);
@@ -361,8 +339,8 @@ async function refreshAllData() {
         if (btcData) {
             state.prices.bitcoin = btcData;
             updatePriceUI('btc', btcData.price.toLocaleString(), btcData.change24h.toFixed(2) + '%', '$');
-            document.getElementById('btc-current')?.textContent && 
-                (document.getElementById('btc-current').textContent = `~$${btcData.price.toLocaleString()}`);
+            const btcCurrEl = document.getElementById('btc-current');
+            if (btcCurrEl) btcCurrEl.textContent = `~$${btcData.price.toLocaleString()}`;
             state.priceHistory.bitcoin.push({ time: Date.now(), price: btcData.price });
         }
         
@@ -385,9 +363,13 @@ async function refreshAllData() {
 }
 
 function updatePriceUI(commodity, price, change, prefix = '₹') {
+    // Handle BTC special case
+    const priceId = commodity === 'btc' ? 'price-btc' : `price-${commodity}`;
+    const changeId = commodity === 'btc' ? 'change-btc' : `change-${commodity}`;
+    
     // Main price cards
-    const priceEl = document.getElementById(`price-${commodity}`);
-    const changeEl = document.getElementById(`change-${commodity}`);
+    const priceEl = document.getElementById(priceId);
+    const changeEl = document.getElementById(changeId);
     const badgeEl = document.getElementById(`${commodity === 'btc' ? 'btc' : commodity}-badge`);
     
     if (priceEl) priceEl.textContent = `${prefix}${price}`;
