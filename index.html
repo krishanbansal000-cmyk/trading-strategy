@@ -104,8 +104,7 @@
         <section id="view-overview" class="view active">
             <header class="view-header">
                 <h1>Trading Dashboard</h1>
-                <p class="subtitle">Financial Astrology Based Commodity Trading</p>
-                <p class="subtitle">Free data sources: Yahoo Finance via public proxy fallbacks for Tata Gold ETF, Groww Silver ETF, and Hindustan Copper; CoinGecko for Bitcoin; Alpha Vantage as backup.</p>
+                <p class="subtitle">Live pricing with astrology-timing guidance for gold, silver, copper, and Bitcoin.</p>
             </header>
             
             <div class="price-grid">
@@ -119,8 +118,8 @@
                         <span class="change" id="change-gold">--%</span>
                     </div>
                     <div class="card-footer">
-                        <span class="score">Score: <strong>4/10</strong></span>
-                        <span class="action hold">HOLD</span>
+                        <span class="score" id="score-gold">Score: <strong>4/10</strong></span>
+                        <span class="action hold" id="action-gold">HOLD</span>
                     </div>
                 </div>
                 
@@ -134,8 +133,8 @@
                         <span class="change" id="change-silver">--%</span>
                     </div>
                     <div class="card-footer">
-                        <span class="score">Score: <strong>0/10</strong></span>
-                        <span class="action avoid">AVOID</span>
+                        <span class="score" id="score-silver">Score: <strong>0/10</strong></span>
+                        <span class="action avoid" id="action-silver">AVOID</span>
                     </div>
                 </div>
                 
@@ -149,8 +148,8 @@
                         <span class="change" id="change-copper">--%</span>
                     </div>
                     <div class="card-footer">
-                        <span class="score">Score: <strong>2/10</strong></span>
-                        <span class="action caution">CAUTION</span>
+                        <span class="score" id="score-copper">Score: <strong>2/10</strong></span>
+                        <span class="action caution" id="action-copper">CAUTION</span>
                     </div>
                 </div>
                 
@@ -164,8 +163,8 @@
                         <span class="change" id="change-btc">--%</span>
                     </div>
                     <div class="card-footer">
-                        <span class="score">Score: <strong>10/10</strong></span>
-                        <span class="action buy">BUY</span>
+                        <span class="score" id="score-btc">Score: <strong>10/10</strong></span>
+                        <span class="action buy" id="action-btc">BUY</span>
                     </div>
                 </div>
             </div>
@@ -174,19 +173,18 @@
                 <h2>Price Comparison (7 Days)</h2>
                 <div class="chart-wrapper"><canvas id="overviewChart"></canvas></div>
             </div>
-            
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <span class="stat-value">100%</span>
-                    <span class="stat-label">Trend Accuracy</span>
+
+            <div class="overview-research">
+                <div class="recommendation-panel">
+                    <div class="section-header">
+                        <h2>Current Recommendations</h2>
+                        <p>Live guidance from the active timing model.</p>
+                    </div>
+                    <div class="recommendation-grid" id="overview-recommendations"></div>
                 </div>
-                <div class="stat-card">
-                    <span class="stat-value">+4.90%</span>
-                    <span class="stat-label">Silver Returns</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-value">8.4x</span>
-                    <span class="stat-label">Silver vs Gold</span>
+                <div class="model-note-card" id="overview-model-note">
+                    <h3>Method Note</h3>
+                    <p>Planetary dates are treated as timing windows. Early action is preferred only when price behavior is already confirming the move.</p>
                 </div>
             </div>
         </section>
@@ -206,6 +204,7 @@
                     <div class="chart-wrapper"><canvas id="goldChart"></canvas></div>
                 </div>
                 <div class="detail-sidebar">
+                    <div class="recommendation-card" id="gold-recommendation-card"></div>
                     <div class="info-card">
                         <h3>Position Sizing</h3>
                         <div class="info-row"><span>Max Allocation</span><strong>10-15%</strong></div>
@@ -253,6 +252,7 @@
                     <div class="chart-wrapper"><canvas id="silverChart"></canvas></div>
                 </div>
                 <div class="detail-sidebar">
+                    <div class="recommendation-card" id="silver-recommendation-card"></div>
                     <div class="info-card">
                         <h3>Position Sizing</h3>
                         <div class="info-row"><span>Max Allocation</span><strong>10-15%</strong></div>
@@ -275,14 +275,6 @@
                             <li>Moon conjunct Rahu/Ketu - manipulation</li>
                             <li>New Moon days - low volume</li>
                         </ul>
-                    </div>
-                    <div class="perf-card">
-                        <h3>Verified Performance</h3>
-                        <div class="perf-grid">
-                            <div class="perf-item"><span class="perf-value">100%</span><span class="perf-label">Trend Accuracy</span></div>
-                            <div class="perf-item"><span class="perf-value">+4.90%</span><span class="perf-label">Returns</span></div>
-                            <div class="perf-item"><span class="perf-value">8.4x</span><span class="perf-label">vs Gold</span></div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -313,17 +305,18 @@
                     </div>
                 </div>
                 <div class="detail-sidebar">
+                    <div class="recommendation-card" id="copper-recommendation-card"></div>
                     <div class="signal-card bullish countdown-card">
-                        <h3>SUPER BULLISH: April 1-25</h3>
+                        <h3>Favorable Window: April 1-25</h3>
                         <p>Venus enters Taurus (Own Sign)</p>
                         <div class="countdown" id="copper-countdown">Loading...</div>
-                        <p class="hint">Best time to add positions or recover losses</p>
+                        <p class="hint">Use this period for staged entries or recovery decisions.</p>
                     </div>
                     <div class="signal-card danger critical">
-                        <h3>CRITICAL: July 10 - Aug 4</h3>
+                        <h3>High-Risk Window: July 10 - Aug 4</h3>
                         <p><strong>Venus in Virgo (DEBILITATED)</strong></p>
-                        <p class="danger-text">NEVER buy copper during this period!</p>
-                        <p><strong>EXIT ALL POSITIONS BEFORE JULY 10!</strong></p>
+                        <p class="danger-text">Avoid fresh buying during this period.</p>
+                        <p><strong>Plan exits before July 10.</strong></p>
                     </div>
                     <div class="info-card">
                         <h3>Copper Timeline</h3>
@@ -353,13 +346,14 @@
                     <div class="chart-wrapper"><canvas id="bitcoinChart"></canvas></div>
                 </div>
                 <div class="detail-sidebar">
+                    <div class="recommendation-card" id="bitcoin-recommendation-card"></div>
                     <div class="signal-card bullish super">
-                        <h3>SUPER BULLISH: Until June 2026</h3>
+                        <h3>Primary Window: Until June 2026</h3>
                         <p><strong>Rahu in Aquarius (Own Sign)</strong></p>
                         <div class="target-box"><span>Target:</span><strong>$90,000 - $110,000</strong></div>
                         <ul>
-                            <li>Buy & HODL strategy</li>
-                            <li>Add on dips below $65,000</li>
+                            <li>Hold core exposure while regime remains constructive</li>
+                            <li>Add on controlled pullbacks below $65,000</li>
                             <li>Take partial profits at $90K+</li>
                         </ul>
                     </div>
@@ -549,9 +543,9 @@
         <div class="chat-messages" id="chat-messages"></div>
         <div class="chat-input-area">
             <div class="quick-btns">
-                <button onclick="askAI('What is the current recommendation?')">Current view?</button>
-                <button onclick="askAI('What are the best entry points?')">Entry points?</button>
-                <button onclick="askAI('What should I do with my position?')">My position?</button>
+                <button onclick="askAI('What is the current recommendation?')">Recommendation</button>
+                <button onclick="askAI('What is the next timing window?')">Timing window</button>
+                <button onclick="askAI('What is the risk on the current setup?')">Risk check</button>
             </div>
             <div class="input-row">
                 <input type="text" id="chat-input" placeholder="Ask about trading strategies..." onkeypress="if(event.key==='Enter')sendChat()">

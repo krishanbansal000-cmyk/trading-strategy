@@ -388,32 +388,102 @@ body {
     display: block;
 }
 
-/* ========== STATS GRID ========== */
-.stats-grid {
+.overview-research {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: minmax(0, 1.8fr) minmax(260px, 0.9fr);
     gap: 1rem;
 }
 
-.stat-card {
+.recommendation-panel,
+.model-note-card,
+.recommendation-card {
     background: var(--bg-card);
     border-radius: 12px;
-    padding: 1.25rem;
-    text-align: center;
     border: 1px solid var(--border-color);
+    padding: 1.25rem;
 }
 
-.stat-value {
-    display: block;
-    font-size: 2rem;
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.section-header h2 {
+    font-size: 1.05rem;
     font-weight: 600;
-    color: var(--bullish);
-    letter-spacing: -0.02em;
 }
 
-.stat-label {
-    font-size: 0.85rem;
+.section-header p,
+.model-note-card p {
     color: var(--text-secondary);
+    font-size: 0.88rem;
+}
+
+.model-note-card h3 {
+    font-size: 0.95rem;
+    margin-bottom: 0.65rem;
+}
+
+.recommendation-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.recommendation-item {
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 1rem;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0));
+}
+
+.recommendation-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.recommendation-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.recommendation-score {
+    color: var(--text-dim);
+    font-size: 0.8rem;
+}
+
+.recommendation-item p,
+.recommendation-card p {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    margin-bottom: 0.45rem;
+}
+
+.recommendation-meta,
+.recommendation-window {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+}
+
+.recommendation-card h3 {
+    font-size: 1rem;
+    margin-bottom: 0.65rem;
+}
+
+.recommendation-card .action {
+    display: inline-flex;
+    margin-bottom: 0.75rem;
+}
+
+.recommendation-card .recommendation-window {
+    display: block;
+    margin-top: 0.55rem;
 }
 
 /* ========== DETAIL VIEWS ========== */
@@ -536,30 +606,6 @@ body {
 
 .success { color: var(--bullish); }
 .danger { color: var(--danger); }
-
-/* Performance Card */
-.perf-card {
-    background: var(--bg-card);
-    border-radius: 12px;
-    padding: 1.25rem;
-    border: 1px solid var(--bullish);
-}
-
-.perf-card h3 {
-    font-size: 0.9rem;
-    margin-bottom: 0.75rem;
-    font-weight: 500;
-}
-
-.perf-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.5rem;
-}
-
-.perf-item { text-align: center; }
-.perf-value { display: block; font-size: 1.1rem; font-weight: 600; color: var(--bullish); }
-.perf-label { font-size: 0.7rem; color: var(--text-dim); }
 
 /* Position Card */
 .position-card {
@@ -1163,7 +1209,7 @@ body {
 /* ========== RESPONSIVE ========== */
 @media (max-width: 1400px) {
     .price-grid { grid-template-columns: repeat(2, 1fr); }
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .overview-research { grid-template-columns: 1fr; }
     .detail-grid { grid-template-columns: 1fr; }
     .calendar-grid { grid-template-columns: 1fr; }
     .rules-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1214,7 +1260,7 @@ body {
 
 @media (max-width: 768px) {
     .price-grid { grid-template-columns: 1fr; }
-    .stats-grid { grid-template-columns: 1fr; }
+    .recommendation-grid { grid-template-columns: 1fr; }
     .pos-grid { grid-template-columns: repeat(2, 1fr); }
     
     .view-header h1 {
@@ -1231,6 +1277,11 @@ body {
 
     .chat-panel {
         max-width: 100%;
+    }
+
+    .section-header {
+        flex-direction: column;
+        align-items: flex-start;
     }
 }
 

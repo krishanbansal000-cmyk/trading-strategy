@@ -8,7 +8,7 @@ const CONFIG = {
         key: 'f06361dee1044c2387e21d15deb5c917.loNg83Ixj4zcQJF5',
         url: 'https://api.z.ai/api/coding/paas/v4',
         model: 'glm-5',
-        fallbackModel: 'glm-4.7-flash',  // Flash as backup
+        fallbackModel: 'GLM-4.7-Flash',
         maxTokens: 4000,
         maxContinuations: 2
     },
@@ -201,6 +201,45 @@ Provide positive, encouraging Bitcoin advice.`
     }
 };
 
+const RECOMMENDATION_BASE = {
+    gold: {
+        name: 'Tata Gold ETF',
+        score: 4,
+        actionClass: 'hold',
+        actionLabel: 'HOLD',
+        summary: 'Wait for the stronger Sun-in-Aries window. Add only on controlled weakness.',
+        window: 'Next favorable window: March 21 onward.',
+        earlyRule: 'Early accumulation is acceptable 1-2 sessions before the window if selling pressure is fading.'
+    },
+    silver: {
+        name: 'Groww Silver ETF',
+        score: 3,
+        actionClass: 'caution',
+        actionLabel: 'CAUTION',
+        summary: 'Silver remains fragile until the next Taurus-Moon support window.',
+        window: 'Primary support window: March 21 to March 24.',
+        earlyRule: 'Build exposure slightly early only if the decline is slowing and liquidity is returning.'
+    },
+    copper: {
+        name: 'Hindustan Copper',
+        score: 2,
+        actionClass: 'caution',
+        actionLabel: 'CAUTION',
+        summary: 'Stay defensive until the Venus-in-Taurus recovery phase opens.',
+        window: 'Recovery window: April 1 to April 25.',
+        earlyRule: 'Early entries should be staged and tied to price stabilization rather than the calendar alone.'
+    },
+    bitcoin: {
+        name: 'Bitcoin',
+        score: 8,
+        actionClass: 'buy',
+        actionLabel: 'BUY',
+        summary: 'The broader regime remains constructive while Rahu stays supportive.',
+        window: 'Current constructive window remains open into June 2026.',
+        earlyRule: 'Use pullbacks to add; avoid chasing extended daily spikes.'
+    }
+};
+
 // ========== STATE ==========
 const state = {
     currentView: 'overview',
@@ -212,6 +251,78 @@ const state = {
     chatMode: localStorage.getItem('chatMode') || 'codex',
     agentUrl: getDefaultAgentUrl()
 };
+
+function getRecommendationSnapshot(key) {
+    const base = RECOMMENDATION_BASE[key];
+    const priceState = state.prices[key] || {};
+    const rawChange = key === 'bitcoin' ? priceState.change24h : priceState.change;
+    const change = Number.parseFloat(rawChange);
+
+    let momentumNote = 'Price confirmation is not available yet.';
+    if (Number.isFinite(change)) {
+        if (change <= -1.5) {
+            momentumNote = 'Current session is already weak, which supports waiting or reducing risk early.';
+        } else if (change < 0) {
+            momentumNote = 'Current session is mildly soft, so early action should stay selective.';
+        } else if (change >= 1.5) {
+            momentumNote = 'Current session is already firm, so avoid chasing beyond the timing window.';
+        } else {
+            momentumNote = 'Current session is stable enough to watch for confirmation into the next window.';
+        }
+    }
+
+    return {
+        ...base,
+        momentumNote
+    };
+}
+
+function renderRecommendations() {
+    const overview = document.getElementById('overview-recommendations');
+    if (overview) {
+        overview.innerHTML = Object.keys(RECOMMENDATION_BASE).map(key => {
+            const item = getRecommendationSnapshot(key);
+            return `
+                <article class="recommendation-item">
+                    <div class="recommendation-head">
+                        <div>
+                            <div class="recommendation-name">${item.name}</div>
+                            <div class="recommendation-score">Score ${item.score}/10</div>
+                        </div>
+                        <span class="action ${item.actionClass}">${item.actionLabel}</span>
+                    </div>
+                    <p>${item.summary}</p>
+                    <div class="recommendation-meta">${item.momentumNote}</div>
+                    <div class="recommendation-window">${item.window}</div>
+                </article>
+            `;
+        }).join('');
+    }
+
+    Object.entries(RECOMMENDATION_BASE).forEach(([key]) => {
+        const item = getRecommendationSnapshot(key);
+        const idSuffix = key === 'bitcoin' ? 'btc' : key;
+        const scoreEl = document.getElementById(`score-${idSuffix}`);
+        const actionEl = document.getElementById(`action-${idSuffix}`);
+        if (scoreEl) scoreEl.innerHTML = `Score: <strong>${item.score}/10</strong>`;
+        if (actionEl) {
+            actionEl.textContent = item.actionLabel;
+            actionEl.className = `action ${item.actionClass}`;
+        }
+
+        const detailCard = document.getElementById(`${key}-recommendation-card`);
+        if (detailCard) {
+            detailCard.innerHTML = `
+                <h3>Current Recommendation</h3>
+                <span class="action ${item.actionClass}">${item.actionLabel}</span>
+                <p>${item.summary}</p>
+                <p>${item.momentumNote}</p>
+                <span class="recommendation-window">${item.window}</span>
+                <span class="recommendation-window">${item.earlyRule}</span>
+            `;
+        }
+    });
+}
 
 // ========== NAVIGATION ==========
 function switchView(viewId) {
@@ -769,6 +880,7 @@ async function refreshAllData() {
         
         // Update charts
         updateCharts();
+        renderRecommendations();
         
         // Save to localStorage
         savePriceHistory();
@@ -1553,6 +1665,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadChatHistory();
     initChatResize();
     initCharts();
+    renderRecommendations();
     refreshAllData();
     updateCountdowns();
     updateChatContext();
