@@ -14,3 +14,4 @@
 
 [functions."agent"]
   node_bundler = "esbuild"
+  external_node_modules = []
