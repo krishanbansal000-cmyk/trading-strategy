@@ -1026,6 +1026,15 @@ function getChatScope() {
     return COMMODITY_CONTEXT[state.currentView] ? state.currentView : 'overview';
 }
 
+function inferCommodityFromMessage(message) {
+    const text = String(message || '').toLowerCase();
+    if (/(^|\W)gold(\W|$)|tata gold/.test(text)) return 'gold';
+    if (/(^|\W)silver(\W|$)|groww silver/.test(text)) return 'silver';
+    if (/(^|\W)copper(\W|$)|hindustan copper/.test(text)) return 'copper';
+    if (/(^|\W)bitcoin(\W|$)|(^|\W)btc(\W|$)/.test(text)) return 'bitcoin';
+    return 'overview';
+}
+
 function createThread(title = 'New thread') {
     return {
         id: `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1377,7 +1386,8 @@ function normalizeModelContent(content) {
 }
 
 async function sendChatViaAgent({ msg, history }) {
-    const scope = getChatScope();
+    const currentScope = getChatScope();
+    const scope = currentScope === 'overview' ? inferCommodityFromMessage(msg) : currentScope;
     const book = document.getElementById('book-select')?.value || 'general';
     const response = await fetch(CONFIG.agent.url, {
         method: 'POST',
