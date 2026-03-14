@@ -33,6 +33,7 @@ const BOOK_TEXT_FILES = [
 ];
 
 const STRATEGY_FILE_CANDIDATES = ['strategy.md', 'strategy.txt', 'trading-strategy.md', 'trading-strategy.txt'];
+const REPO_CONTEXT_MANIFEST = 'repo_context.json';
 const CODE_CONTEXT_FILES = [
     'README.md',
     'server.js',
@@ -1337,6 +1338,24 @@ async function loadCodeContext() {
     if (loadCodeContext.cache) return loadCodeContext.cache;
 
     loadCodeContext.cache = (async () => {
+        try {
+            const manifestResponse = await fetch(REPO_CONTEXT_MANIFEST, { cache: 'no-store' });
+            if (manifestResponse.ok) {
+                const manifest = await manifestResponse.json();
+                if (Array.isArray(manifest?.files) && manifest.files.length) {
+                    return manifest.files
+                        .filter(entry => entry && typeof entry.name === 'string' && typeof entry.text === 'string')
+                        .map(entry => ({
+                            file: entry.file || entry.name,
+                            name: entry.name,
+                            text: entry.text
+                        }));
+                }
+            }
+        } catch {
+            // Fall back to direct file fetches on local/static preview.
+        }
+
         const entries = await Promise.all(
             CODE_CONTEXT_FILES.map(async file => {
                 try {
