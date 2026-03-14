@@ -539,20 +539,13 @@
                     </button>
                 </div>
             </div>
-            <div class="agent-url-row" id="agent-url-row">
-                <label class="thread-label" for="agent-url-input">Backend</label>
-                <div class="agent-url-controls">
-                    <input type="url" id="agent-url-input" class="agent-url-input" placeholder="https://your-server.example.com/api/agent/stream">
-                    <button class="agent-url-save" onclick="saveAgentUrl()">Use</button>
+            <div class="agent-key-row" id="agent-key-row">
+                <label class="thread-label" for="api-key-input">ZAI API Key</label>
+                <div class="agent-key-controls">
+                    <input type="password" id="api-key-input" class="agent-key-input" placeholder="Paste your ZAI key for browser-side GLM 4.7 chat">
+                    <button class="agent-key-save" onclick="saveApiKey()">Use</button>
                 </div>
-                <label class="agent-toggle-row" for="agent-terminal-toggle">
-                    <span class="agent-toggle-copy">
-                        <span class="thread-label">Agent Terminal</span>
-                        <span class="agent-toggle-hint" id="agent-terminal-hint">Terminal access unavailable on this deployment.</span>
-                    </span>
-                    <input type="checkbox" id="agent-terminal-toggle" class="agent-toggle-input">
-                    <span class="agent-toggle-pill" aria-hidden="true"></span>
-                </label>
+                <p class="agent-key-hint" id="api-key-hint">Paste your ZAI key to enable direct browser chat. The key stays in this browser, not in the repo.</p>
             </div>
             <select id="thread-select" class="thread-select" onchange="switchThread(this.value)"></select>
         </div>

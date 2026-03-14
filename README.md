@@ -1,68 +1,59 @@
-# 🌟 Financial Astrology Trading Strategies
+# Financial Astrology Trading Strategies
 
-A comprehensive, planetary-aligned commodity trading guide hosted on GitHub Pages.
+A static trading dashboard with browser-side `glm-4.7` chat, local commodity context, and built-in charting.
 
-## 📊 Covered Assets
+## Covered Assets
 
-| Asset | ETF/Stock | Planetary Ruler |
-|-------|-----------|-----------------|
-| 🥇 Gold | TATAGOLD.NS | Sun |
-| 🥈 Silver | GROWWSLVR.NS | Moon |
-| 🥉 Copper | HINDUSTAN COPPER | Venus |
-| ₿ Bitcoin | BTC | Rahu |
+| Asset | Instrument | Planetary Ruler |
+|-------|------------|-----------------|
+| Gold | Tata Gold ETF | Sun |
+| Silver | Groww Silver ETF | Moon |
+| Copper | Hindustan Copper | Venus |
+| Bitcoin | BTC | Rahu |
 
-## 🌐 Live Website
+## How It Works
 
-Visit: https://krishanbansal000-cmyk.github.io/trading-strategy/
+The chat no longer requires an app backend. The browser sends requests directly to the ZAI API and includes a local context pack built from:
 
-## 📋 Features
+- the four commodity analysis files in the repo
+- the `book_text/*.txt` corpus
+- the built-in timing-window strategy rules
+- any optional `strategy.md`, `strategy.txt`, `trading-strategy.md`, or `trading-strategy.txt`
+- the current 7-day chart data loaded in the dashboard
 
-- **Commodity-specific strategies** based on Vedic astrology
-- **Risk management rules** with stop losses and profit targets
-- **Key date calendar** with upcoming bullish/bearish periods
-- **Quick action guide** for trading decisions
-- **Responsive design** for mobile and desktop
+## Running Locally
 
-## ⚠️ Disclaimer
-
-This is for **educational purposes only**. Not financial advice. Always do your own research and consult a financial advisor before making investment decisions.
-
-## 📈 Verified Performance
-
-- **Trend Accuracy:** 100% (March 5-11, 2026)
-- **Silver Returns:** +4.90%
-- **Silver vs Gold Outperformance:** 8.4x
-
-## 🔧 Technologies
-
-- HTML5
-- CSS3 (with CSS Grid & Flexbox)
-- Vanilla JavaScript
-- Node.js backend for agent streaming
-- ZAI/GLM 4.7 model integration with tool-based agent flow
-
-## Agent Mode
-
-For normal flow with ZAI/GLM 4.7 agentic behavior (market data lookup, backtests, and terminal actions), run the app locally or on a server:
+Any static host is enough.
 
 ```bash
-npm install
-npm start
+python3 -m http.server 3000
 ```
 
-Set your model API key and optional terminal access:
+Then open `http://127.0.0.1:3000`.
+
+Paste your `ZAI_API_KEY` into the chat panel. The key is stored only in that browser's local storage. It is not written into the repo.
+
+## Deployment
+
+This version can be hosted on GitHub Pages, Netlify, or any static host because it does not require a Node backend for chat.
+
+Important tradeoff:
+
+- the API key is user-supplied in the browser
+- that means the key is not public in the repo, but it is available to the browser session that uses it
+
+If you want the key to remain fully server-side and hidden from users, a backend is still required.
+
+## Testing
+
+Run the local smoke test:
 
 ```bash
-export ZAI_API_KEY=<your-zai-api-key>
-ENABLE_DANGEROUS_TERMINAL=1 npm start
+npm run test:e2e
 ```
 
-Primary model defaults to `glm-4.7` with fallback `GLM-4.7-Flash`.
+The Playwright test runs the app on a local static server and mocks the ZAI API so the UI flow can be verified without a real key.
 
-On local/OpenClaw runs, the chat UI now includes an `Agent Terminal` toggle. When that toggle is enabled, the backend can expose terminal execution to the GLM agent for explicit terminal/backtest requests. Remote/static deployments still require a real Node backend, and unrestricted terminal execution can still be forced with `ENABLE_DANGEROUS_TERMINAL=1`.
+## Disclaimer
 
-GitHub Pages can still serve the static UI, but the integrated agent/backend flow requires a real Node server and will not run on Pages-only hosting.
-
----
-
-Generated: March 13, 2026
+Educational only. Not financial advice.

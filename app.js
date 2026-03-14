@@ -4,18 +4,16 @@ const CONFIG = {
         key: 'S9ZYCKGLYTDLOWTZ',
         cacheTime: 3600000
     },
-    agent: {
-        url: '/api/agent/stream'
+    zai: {
+        apiUrl: 'https://api.z.ai/api/coding/paas/v4/chat/completions',
+        primaryModel: 'glm-4.7',
+        fallbackModel: 'GLM-4.7-Flash'
     },
     refreshInterval: 3600000
 };
 
-function getDefaultAgentUrl() {
-    const saved = localStorage.getItem('agentUrl');
-    if (saved) return saved;
-    const queryValue = new URLSearchParams(window.location.search).get('agent_url');
-    if (queryValue) return queryValue;
-    return '/api/agent/stream';
+function getStoredApiKey() {
+    return localStorage.getItem('zaiApiKey') || '';
 }
 
 const ANALYSIS_FILES = {
@@ -24,6 +22,18 @@ const ANALYSIS_FILES = {
     copper: 'copper_analysis_2026-03-13.md',
     bitcoin: 'bitcoin_analysis_2026-03-13.md'
 };
+
+const BOOK_TEXT_FILES = [
+    'book_text/1. Vedic Financial Astrology.txt',
+    'book_text/Bayer, George (1937) - Time Factors in the Stock Market [78 p.].txt',
+    'book_text/Bayer, George (1937-40) - Preview of Markets [137 p.].txt',
+    'book_text/Bayer, George (1939) - Preview of Markets [136 p.].txt',
+    'book_text/Bayer, George (1941) - Gold Nuggets for Stock & Commodity Traders [36 p.].txt',
+    'book_text/Gillen, Jack (1979) - The Key to Speculation on the NYSE [151 p.].txt',
+    'book_text/Magi Astrology : Financial Astrology.txt'
+];
+
+const STRATEGY_FILE_CANDIDATES = ['strategy.md', 'strategy.txt', 'trading-strategy.md', 'trading-strategy.txt'];
 
 // ETF Symbols on NSE
 const ETF_SYMBOLS = {
@@ -237,13 +247,8 @@ const state = {
     chatStore: {},
     priceHistory: { gold: [], silver: [], copper: [], bitcoin: [] },
     isSending: false,
-    agentUrl: getDefaultAgentUrl(),
-    allowTerminal: localStorage.getItem('allowAgentTerminal') === 'true',
-    health: {
-        dangerousTerminalEnabled: false,
-        localAgentTerminalEnabled: false,
-        zaiConfigured: false
-    }
+    apiKey: getStoredApiKey(),
+    contextReady: false
 };
 
 function getRecommendationSnapshot(key) {
@@ -355,66 +360,30 @@ function setAgentStatus(text) {
     if (badge) badge.textContent = text;
 }
 
-function updateAgentUrlUI() {
-    const input = document.getElementById('agent-url-input');
-    if (input && input.value !== state.agentUrl) input.value = state.agentUrl;
-    const toggle = document.getElementById('agent-terminal-toggle');
-    if (toggle) toggle.checked = Boolean(state.allowTerminal);
-    const hint = document.getElementById('agent-terminal-hint');
+function updateApiKeyUI() {
+    const input = document.getElementById('api-key-input');
+    if (input && input.value !== state.apiKey) input.value = state.apiKey;
+    const hint = document.getElementById('api-key-hint');
     if (hint) {
-        const available = state.health.dangerousTerminalEnabled || state.health.localAgentTerminalEnabled;
-        hint.textContent = available
-            ? (state.allowTerminal ? 'Terminal access enabled for this chat.' : 'Terminal access available when toggle is on.')
-            : 'Terminal access unavailable on this deployment.';
+        hint.textContent = state.apiKey
+            ? `Stored in this browser only. Chat uses ${CONFIG.zai.primaryModel} with local books, files, and strategy context.`
+            : 'Paste your ZAI key to enable direct browser chat. The key stays in this browser, not in the repo.';
     }
 }
 
-function saveAgentUrl() {
-    const input = document.getElementById('agent-url-input');
+function saveApiKey() {
+    const input = document.getElementById('api-key-input');
     if (!input) return;
-    const value = input.value.trim().replace(/\/+$/, '');
-    state.agentUrl = value;
+    const value = input.value.trim();
+    state.apiKey = value;
     if (value) {
-        localStorage.setItem('agentUrl', value);
-        setAgentStatus('Backend URL saved');
+        localStorage.setItem('zaiApiKey', value);
+        setAgentStatus(`${CONFIG.zai.primaryModel} key saved`);
     } else {
-        localStorage.removeItem('agentUrl');
-        setAgentStatus('Backend URL cleared');
+        localStorage.removeItem('zaiApiKey');
+        setAgentStatus('ZAI key cleared');
     }
-    updateAgentUrlUI();
-    refreshAgentHealth();
-}
-
-function setAgentTerminalAccess(enabled) {
-    state.allowTerminal = Boolean(enabled);
-    localStorage.setItem('allowAgentTerminal', String(state.allowTerminal));
-    updateAgentUrlUI();
-    setAgentStatus(state.allowTerminal ? 'Agent terminal enabled' : 'Agent terminal disabled');
-}
-
-async function refreshAgentHealth() {
-    const agentUrl = state.agentUrl || CONFIG.agent.url;
-    if (!agentUrl) return;
-
-    try {
-        const healthUrl = agentUrl.replace(/\/api\/agent\/stream\/?$/, '/api/health');
-        const response = await fetch(healthUrl, { cache: 'no-store' });
-        if (!response.ok) throw new Error(`Health check failed (${response.status})`);
-        const payload = await response.json();
-        state.health = {
-            dangerousTerminalEnabled: Boolean(payload.dangerousTerminalEnabled),
-            localAgentTerminalEnabled: Boolean(payload.localAgentTerminalEnabled),
-            zaiConfigured: Boolean(payload.zaiConfigured)
-        };
-    } catch (error) {
-        state.health = {
-            dangerousTerminalEnabled: false,
-            localAgentTerminalEnabled: false,
-            zaiConfigured: false
-        };
-    }
-
-    updateAgentUrlUI();
+    updateApiKeyUI();
 }
 
 function applyChatWidth(width) {
@@ -1170,13 +1139,10 @@ function saveChatHistory() {
 
 function getWelcomeMessage() {
     const scope = getChatScope();
-    const terminalNote = state.allowTerminal
-        ? ' Terminal access is enabled for explicit local agent tasks.'
-        : '';
     if (COMMODITY_CONTEXT[scope]) {
-        return `You are in ${COMMODITY_CONTEXT[scope].name}. ZDI will use the selected reference, current live prices, all local books, strategy input, and local commodity analysis files when answering.${terminalNote}`;
+        return `You are in ${COMMODITY_CONTEXT[scope].name}. GLM 4.7 will use live prices, the four local analysis files, the books corpus, and strategy timing rules for each reply.`;
     }
-    return `Ask about Gold, Silver, Copper, Bitcoin, timing, or portfolio decisions. ZDI will use the selected reference, current live prices, all local books, strategy input, and local commodity analysis files in the reply.${terminalNote}`;
+    return 'Ask about Gold, Silver, Copper, Bitcoin, timing, or portfolio decisions. GLM 4.7 will answer from live prices, local books, strategy rules, and the four analysis files.';
 }
 
 function renderCurrentChatHistory() {
@@ -1268,6 +1234,52 @@ async function loadAnalysisFileContext() {
     return loadAnalysisFileContext.cache;
 }
 
+async function loadBookTextContext() {
+    if (loadBookTextContext.cache) return loadBookTextContext.cache;
+
+    loadBookTextContext.cache = (async () => {
+        const entries = await Promise.all(
+            BOOK_TEXT_FILES.map(async file => {
+                try {
+                    const response = await fetch(file, { cache: 'no-store' });
+                    if (!response.ok) return null;
+                    const text = await response.text();
+                    return {
+                        file,
+                        name: file.split('/').pop().replace(/\.txt$/i, ''),
+                        text
+                    };
+                } catch {
+                    return null;
+                }
+            })
+        );
+        return entries.filter(Boolean);
+    })();
+
+    return loadBookTextContext.cache;
+}
+
+async function loadStrategyContext() {
+    if (loadStrategyContext.cache) return loadStrategyContext.cache;
+
+    loadStrategyContext.cache = (async () => {
+        for (const file of STRATEGY_FILE_CANDIDATES) {
+            try {
+                const response = await fetch(file, { cache: 'no-store' });
+                if (!response.ok) continue;
+                const text = (await response.text()).trim();
+                if (text) return { file, text };
+            } catch {
+                // Keep scanning strategy candidates.
+            }
+        }
+        return { file: null, text: 'No extra strategy input file found in the repo.' };
+    })();
+
+    return loadStrategyContext.cache;
+}
+
 function summarizeAnalysisText(text) {
     return String(text || '')
         .replace(/\r/g, '')
@@ -1277,6 +1289,221 @@ function summarizeAnalysisText(text) {
         .slice(0, 18)
         .join('\n')
         .slice(0, 2400);
+}
+
+function normalizeSearchTerms(query, scope, book) {
+    const bookName = BOOKS[book]?.name || '';
+    const commodityName = COMMODITY_CONTEXT[scope]?.name || '';
+    return [...new Set(
+        `${query} ${scope} ${bookName} ${commodityName} astrology timing support resistance price trend one day before two days before`
+            .toLowerCase()
+            .match(/[a-z0-9]{3,}/g) || []
+    )];
+}
+
+function scoreSnippet(text, terms) {
+    const haystack = text.toLowerCase();
+    return terms.reduce((score, term) => score + (haystack.includes(term) ? 2 : 0), 0);
+}
+
+function extractRelevantSnippets(text, terms, maxSnippets = 2, maxChars = 1100) {
+    const paragraphs = String(text || '')
+        .replace(/\r/g, '')
+        .split(/\n{2,}/)
+        .map(chunk => chunk.replace(/\n+/g, ' ').trim())
+        .filter(chunk => chunk.length > 80);
+
+    const ranked = paragraphs
+        .map(chunk => ({ chunk, score: scoreSnippet(chunk, terms) }))
+        .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score || a.chunk.length - b.chunk.length)
+        .slice(0, maxSnippets)
+        .map(item => item.chunk);
+
+    const fallback = ranked.length ? ranked : paragraphs.slice(0, 1);
+    return fallback.join('\n').slice(0, maxChars);
+}
+
+function buildLiveMarketContext() {
+    return Object.entries(COMMODITY_CONTEXT).map(([key, info]) => {
+        const priceState = state.prices[key] || {};
+        const history = (state.priceHistory[key] || []).slice(-7);
+        const lastPrices = history.length
+            ? history.map(point => `${point.date || point.label}:${Number(point.price).toFixed(2)}`).join(', ')
+            : 'No 7-day series loaded yet.';
+        const currentPrice = key === 'bitcoin'
+            ? (priceState.price ? `$${Number(priceState.price).toLocaleString()}` : 'n/a')
+            : (priceState.price ? `₹${priceState.price}` : 'n/a');
+        const change = key === 'bitcoin'
+            ? (Number.isFinite(Number(priceState.change24h)) ? `${Number(priceState.change24h).toFixed(2)}%` : 'n/a')
+            : (priceState.change || 'n/a');
+        return `${info.name}
+- Current price: ${currentPrice}
+- Session change: ${change}
+- Recent chart data: ${lastPrices}
+- House recommendation: ${getRecommendationSnapshot(key).actionLabel} | ${getRecommendationSnapshot(key).summary}`;
+    }).join('\n\n');
+}
+
+function buildAnalysisDigest(analysisContext, scope) {
+    return Object.entries(analysisContext).map(([key, text]) => {
+        const label = COMMODITY_CONTEXT[key]?.name || key;
+        const prefix = key === scope ? '[PRIMARY FILE]' : '[REFERENCE FILE]';
+        return `${prefix} ${label}\n${summarizeAnalysisText(text)}`;
+    }).join('\n\n').slice(0, 7000);
+}
+
+function buildBooksDigest(books, query, scope, book) {
+    const terms = normalizeSearchTerms(query, scope, book);
+    const selectedBook = BOOKS[book]?.name || BOOKS.general.name;
+    return books.map(entry => {
+        const priority = entry.name.includes(selectedBook) ? '[SELECTED BOOK]' : '[BOOK]';
+        const excerpt = extractRelevantSnippets(entry.text, terms, entry.name.includes(selectedBook) ? 3 : 2, entry.name.includes(selectedBook) ? 1500 : 950);
+        return `${priority} ${entry.name}\n${excerpt}`;
+    }).join('\n\n').slice(0, 9000);
+}
+
+function buildStrategyDigest(strategyContext) {
+    return [
+        'Core timing strategy:',
+        TIMING_WINDOW_GUIDANCE,
+        '',
+        'Execution rules:',
+        '- Always discuss the timing date as the center of a 1-3 session turn window.',
+        '- If the user asks whether to buy or sell now, weigh live price behavior first, then the timing window, then the local analysis file.',
+        '- Mention one-day-before and two-days-before entries only when price action is already aligning.',
+        '- Avoid false certainty. Use terms like probable, supportive, weakening, confirming, or invalidated.',
+        '',
+        `Optional repo strategy file: ${strategyContext.file || 'none found'}`,
+        strategyContext.text
+    ].join('\n').slice(0, 5000);
+}
+
+function normalizeModelContent(content) {
+    if (typeof content === 'string') return content.trim();
+    if (Array.isArray(content)) {
+        return content
+            .map(part => {
+                if (typeof part === 'string') return part;
+                if (part?.type === 'text') return part.text || '';
+                return '';
+            })
+            .join('')
+            .trim();
+    }
+    return '';
+}
+
+async function buildAgentMessages({ msg, history }) {
+    const scope = getChatScope();
+    const book = document.getElementById('book-select')?.value || 'general';
+    const analysisContext = await loadAnalysisFileContext();
+    const bookTexts = await loadBookTextContext();
+    const strategyContext = await loadStrategyContext();
+
+    const selectedBook = BOOKS[book] || BOOKS.general;
+    const selectedCommodity = COMMODITY_CONTEXT[scope];
+    const recentHistory = history.slice(-7, -1).map(item => ({
+        role: item.role,
+        content: item.content
+    }));
+
+    const systemPrompt = [
+        'You are ZDI, a browser-based trading and astrology advisor focused on gold, silver, copper, and bitcoin.',
+        `Primary model: ${CONFIG.zai.primaryModel}.`,
+        'Do not mention any backend, terminal, tool call, or unavailable server.',
+        'Answer from the local context pack provided below. Treat that as the working knowledge base for this app session.',
+        'Be practical and concise. Use bullet points when the user asks for advice, setups, or timing.',
+        'Always treat dates as timing windows, not exact turn timestamps.',
+        'If a chart view is relevant, refer to the recent 7-day price series already included in the context.',
+        'Do not fabricate backtests or private data. If something is missing, say what is missing.',
+        '',
+        `Selected commodity: ${selectedCommodity ? selectedCommodity.name : 'Overview / cross-market'}`,
+        `Selected reference book: ${selectedBook.name}`,
+        '',
+        'LOCAL CONTEXT PACK',
+        '',
+        'Commodity guidance:',
+        selectedCommodity ? selectedCommodity.context : BOOKS.general.context,
+        '',
+        'Live market snapshot:',
+        buildLiveMarketContext(),
+        '',
+        'Analysis files digest:',
+        buildAnalysisDigest(analysisContext, scope),
+        '',
+        'Books digest:',
+        buildBooksDigest(bookTexts, msg, scope, book),
+        '',
+        'Strategy digest:',
+        buildStrategyDigest(strategyContext)
+    ].join('\n');
+
+    const userPrompt = [
+        `User question: ${msg}`,
+        '',
+        'Response requirements:',
+        '- Lead with the direct answer.',
+        '- Give actionable interpretation based on the timing-window rules.',
+        '- Mention the strongest supporting local file or book angle when relevant.',
+        '- If recommending patience, say what confirmation to wait for.'
+    ].join('\n');
+
+    return [
+        { role: 'system', content: systemPrompt },
+        ...recentHistory,
+        { role: 'user', content: userPrompt }
+    ];
+}
+
+async function requestZaiCompletion(messages) {
+    if (!state.apiKey) {
+        throw new Error('ZAI API key missing. Paste it in the chat panel and save it in this browser first.');
+    }
+
+    const models = [CONFIG.zai.primaryModel, CONFIG.zai.fallbackModel].filter(Boolean);
+    let lastError = null;
+
+    for (const model of models) {
+        try {
+            const response = await fetch(CONFIG.zai.apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${state.apiKey}`
+                },
+                body: JSON.stringify({
+                    model,
+                    temperature: 0.35,
+                    max_tokens: 1400,
+                    messages
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`${model} request failed (${response.status}): ${errorText.slice(0, 200)}`);
+            }
+
+            const payload = await response.json();
+            const content = normalizeModelContent(payload?.choices?.[0]?.message?.content);
+            if (content) return { content, model };
+            throw new Error(`${model} returned an empty response.`);
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    throw lastError || new Error('ZAI request failed.');
+}
+
+async function warmContextCaches() {
+    await Promise.all([
+        loadAnalysisFileContext(),
+        loadBookTextContext(),
+        loadStrategyContext()
+    ]);
+    state.contextReady = true;
 }
 
 async function sendChat() {
@@ -1298,127 +1525,31 @@ async function sendChat() {
     // Create streaming message placeholder
     const streamingMsgId = 'stream-' + Date.now();
     addStreamingMessage(streamingMsgId);
-    setAgentStatus('Agent thinking');
+    setAgentStatus(`Consulting ${CONFIG.zai.primaryModel}`);
 
     try {
-        const fullReply = await sendChatViaAgent({
-            msg,
-            history,
-            thread,
-            streamingMsgId
-        });
-        if (fullReply) {
-            finalizeStreamingMessage(streamingMsgId, fullReply);
-            history.push({ role: 'assistant', content: fullReply });
+        const messages = await buildAgentMessages({ msg, history });
+        const result = await requestZaiCompletion(messages);
+        if (result?.content) {
+            finalizeStreamingMessage(streamingMsgId, result.content);
+            history.push({ role: 'assistant', content: result.content });
             saveChatHistory();
             renderThreadOptions();
-            setAgentStatus('ZDI ready');
+            setAgentStatus(`${result.model} ready`);
             state.isSending = false;
             return;
         }
 
-        throw new Error('Empty agent response');
+        throw new Error('Empty model response');
     } catch (agentError) {
-        console.error('Agent backend error:', agentError);
-        setAgentStatus('Agent backend unavailable');
+        console.error('Agent error:', agentError);
+        setAgentStatus('Agent unavailable');
         removeStreamingMessage(streamingMsgId);
-        const message = String(agentError?.message || '');
-        const isStaticDeploy = window.location.hostname.includes('github.io');
-        const backendError = (isStaticDeploy || message.includes('(405)'))
-            ? `⚠️ Backend endpoint required. This deployment needs a running Node server with /api/agent/stream. Add the backend URL above or run \`npm start\`. Current backend: ${state.agentUrl || 'not set'}.`
-            : `⚠️ ${message || 'Agent backend unavailable.'}`;
-        addMessageToUI('assistant', backendError);
+        addMessageToUI('assistant', `⚠️ ${String(agentError?.message || 'Model request failed.')}`);
         state.isSending = false;
     }
 
     state.isSending = false;
-}
-
-async function sendChatViaAgent({ msg, history, thread, streamingMsgId }) {
-    const bookSelect = document.getElementById('book-select');
-    const book = bookSelect?.value || 'general';
-    const agentUrl = state.agentUrl || CONFIG.agent.url;
-    if (!agentUrl) {
-        throw new Error('Agent backend URL is not configured');
-    }
-    const response = await fetch(agentUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            message: msg,
-            commodity: COMMODITY_CONTEXT[state.currentView] ? state.currentView : 'overview',
-            book,
-            threadId: thread.id,
-            history: history.slice(-8),
-            allowTerminal: state.allowTerminal
-        })
-    });
-
-    if (!response.ok || !response.body) {
-        throw new Error(`Agent backend unavailable (${response.status})`);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let fullReply = '';
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const chunks = buffer.split('\n\n');
-        buffer = chunks.pop() || '';
-
-        for (const chunk of chunks) {
-            const parsed = parseSseChunk(chunk);
-            if (!parsed) continue;
-            const { event, data } = parsed;
-
-            if (event === 'status') {
-                setAgentStatus(data.message || 'Working');
-            } else if (event === 'tool') {
-                setAgentStatus(`Running ${data.name || 'tool'}`);
-            } else if (event === 'tool_result') {
-                setAgentStatus(data.name ? `${data.name} ready` : 'Tool finished');
-            } else if (event === 'delta') {
-                fullReply += data.content || '';
-                updateStreamingMessage(streamingMsgId, fullReply);
-            } else if (event === 'error') {
-                throw new Error(data.message || 'Agent stream failed');
-            }
-        }
-    }
-
-    return fullReply.trim();
-}
-
-function parseSseChunk(chunk) {
-    const lines = chunk.split('\n');
-    let event = 'message';
-    const dataLines = [];
-
-    for (const line of lines) {
-        if (line.startsWith('event:')) {
-            event = line.slice(6).trim();
-        } else if (line.startsWith('data:')) {
-            dataLines.push(line.slice(5).trim());
-        }
-    }
-
-    if (!dataLines.length) return null;
-
-    try {
-        return {
-            event,
-            data: JSON.parse(dataLines.join('\n'))
-        };
-    } catch (e) {
-        return null;
-    }
 }
 
 function addStreamingMessage(id) {
@@ -1518,16 +1649,18 @@ document.addEventListener('DOMContentLoaded', () => {
     initChatResize();
     initCharts();
     renderRecommendations();
-    refreshAgentHealth();
     refreshAllData();
     updateCountdowns();
     updateChatContext();
-    updateAgentUrlUI();
-    document.getElementById('agent-terminal-toggle')?.addEventListener('change', event => {
-        setAgentTerminalAccess(event.target.checked);
-    });
-    document.getElementById('agent-url-input')?.addEventListener('change', () => {
-        refreshAgentHealth();
+    updateApiKeyUI();
+    warmContextCaches()
+        .then(() => setAgentStatus('Local context ready'))
+        .catch(error => {
+            console.warn('Context warmup failed:', error);
+            setAgentStatus('Context partial');
+        });
+    document.getElementById('api-key-input')?.addEventListener('change', () => {
+        saveApiKey();
     });
     document.getElementById('book-select')?.addEventListener('change', () => {
         updateChatContext();
