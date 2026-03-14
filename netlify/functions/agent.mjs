@@ -394,11 +394,19 @@ function buildLocalFallbackReply(payload, contextPack, backtest, chart) {
   ].join('\n\n');
 }
 
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+}
+
 async function callZaiModel(model, messages, timeoutMs) {
   const abortController = new AbortController();
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
   try {
-    const response = await fetch(`${ZAI_API_URL}/chat/completions`, {
+    const response = await withTimeout(fetch(`${ZAI_API_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -406,18 +414,18 @@ async function callZaiModel(model, messages, timeoutMs) {
       },
       body: JSON.stringify({
         model,
-        temperature: 0.35,
-        max_tokens: 700,
+        temperature: 0.3,
+        max_tokens: 550,
         stream: false,
         messages
       }),
       signal: abortController.signal
-    });
+    }), timeoutMs, `${model} request`);
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`${model} failed (${response.status}): ${errorText.slice(0, 220)}`);
     }
-    const payload = await response.json();
+    const payload = await withTimeout(response.json(), 4000, `${model} response parsing`);
     const reply = normalizeModelContent(payload?.choices?.[0]?.message?.content);
     if (!reply) throw new Error(`${model} returned empty content.`);
     return reply;
@@ -432,7 +440,7 @@ async function fetchModelResponse(messages, controller, fallbackContext) {
     const model = ZAI_MODELS[index];
     try {
       encodeLine(controller, { type: 'status', message: `Calling ${model}` });
-      const reply = await callZaiModel(model, messages, index === 0 ? 12000 : 9000);
+      const reply = await callZaiModel(model, messages, index === 0 ? 9000 : 6500);
       encodeLine(controller, { type: 'status', message: 'Formatting response' });
       encodeLine(controller, { type: 'delta', content: reply });
       return { model, reply };
@@ -476,7 +484,11 @@ async function runAgent(payload, controller) {
   let backtest = null;
   if (shouldRunBacktest(payload.message)) {
     encodeLine(controller, { type: 'status', message: 'Running backtest' });
-    backtest = await maybeBuildBacktestContext(payload.message, payload.commodity);
+    backtest = await withTimeout(
+      maybeBuildBacktestContext(payload.message, payload.commodity),
+      5000,
+      'backtest'
+    ).catch(error => ({ summary: `Backtest unavailable: ${error.message}` }));
   }
 
   encodeLine(controller, { type: 'status', message: 'Preparing model request' });
