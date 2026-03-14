@@ -39,24 +39,27 @@ This is for **educational purposes only**. Not financial advice. Always do your 
 - CSS3 (with CSS Grid & Flexbox)
 - Vanilla JavaScript
 - Node.js backend for agent streaming
-- Local Codex CLI integration
+- ZAI/GLM 4.7 model integration with tool-based agent flow
 
 ## Agent Mode
 
-For integrated books, astrology, backtesting, web search, and optional dangerous terminal execution, run the app locally or on a server:
+For normal flow with ZAI/GLM 4.7 agentic behavior (market data lookup, backtests, and terminal actions), run the app locally or on a server:
 
 ```bash
 npm install
 npm start
 ```
 
-Optional dangerous local terminal tool for coding tasks:
+Set your model API key and optional terminal access:
 
 ```bash
+export ZAI_API_KEY=<your-zai-api-key>
 ENABLE_DANGEROUS_TERMINAL=1 npm start
 ```
 
-This flow assumes the environment already has a working `codex` CLI session available, such as OpenClaw/OpenAI Codex local runtime.
+Primary model defaults to `glm-4.7` with fallback `GLM-4.7-Flash`.
+
+On local/OpenClaw runs, the chat UI now includes an `Agent Terminal` toggle. When that toggle is enabled, the backend can expose terminal execution to the GLM agent for explicit terminal/backtest requests. Remote/static deployments still require a real Node backend, and unrestricted terminal execution can still be forced with `ENABLE_DANGEROUS_TERMINAL=1`.
 
 GitHub Pages can still serve the static UI, but the integrated agent/backend flow requires a real Node server and will not run on Pages-only hosting.
 

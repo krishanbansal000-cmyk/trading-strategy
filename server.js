@@ -6,7 +6,7 @@ const { spawn } = require('node:child_process');
 const ROOT = __dirname;
 const REFERENCE_ROOT = path.resolve(ROOT, '../reference');
 const REPORT_FILE = path.join(REFERENCE_ROOT, '2026-03-11_gold_silver_astro_report.md');
-const BOOKS_DIR = path.join(REFERENCE_ROOT, 'books');
+const BOOK_TEXT_DIR = path.join(ROOT, 'book_text');
 const COMMODITY_REPORT_FILES = {
   gold: path.join(ROOT, 'gold_analysis_2026-03-13.md'),
   silver: path.join(ROOT, 'silver_analysis_2026-03-13.md'),
@@ -19,8 +19,107 @@ const COMMODITY_TO_SYMBOL = {
   copper: 'HINDCOPPER.NS',
   bitcoin: 'BTC-USD'
 };
+const ZDI_SYSTEM_PROMPT = [
+  'You are an astrology and trading assistant for gold/silver/copper/bitcoin.',
+  'You have one source of truth per request: a live context block plus local reference files.',
+  'When answering, prioritize concise, practical, and non-prescriptive trading guidance.',
+  'Only use tools when the user explicitly asks for one of the following:',
+  '- Fresh live market data',
+  '- A backtest on stored historical data',
+  '- Terminal command execution.',
+  'Do not run terminal commands unless explicitly requested by the user.',
+  'When tools run, explain what was run and then summarize results in plain language.'
+].join('\\n');
+
 const ENABLE_DANGEROUS_TERMINAL = /^(1|true|yes)$/i.test(process.env.ENABLE_DANGEROUS_TERMINAL || '');
-const CODEX_MODEL = process.env.CODEX_MODEL || 'gpt-5.3-codex-spark';
+const ENABLE_LOCAL_AGENT_TERMINAL = process.env.ENABLE_LOCAL_AGENT_TERMINAL
+  ? /^(1|true|yes)$/i.test(process.env.ENABLE_LOCAL_AGENT_TERMINAL)
+  : true;
+const ZAI_API_URL = (process.env.ZAI_API_URL || 'https://api.z.ai/api/coding/paas/v4').replace(/\/+$/, '');
+const ZAI_API_KEY = process.env.ZAI_API_KEY || process.env.ZAI_TOKEN || '';
+const ZAI_MODELS = [
+  process.env.ZAI_PRIMARY_MODEL || 'glm-4.7',
+  process.env.ZAI_FALLBACK_MODEL || 'GLM-4.7-Flash'
+].filter(Boolean);
+const STRATEGY_FILE_CANDIDATES = ['strategy.md', 'strategy.txt', 'trading-strategy.md', 'trading-strategy.txt'];
+const COMMODITY_KEYS = Object.keys(COMMODITY_TO_SYMBOL);
+const AGENT_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'get_market_snapshot',
+      description: 'Get a fresh market snapshot for a commodity. Use for live prices, returns, and recent series when user asks about current context or chart-ready behavior.',
+      parameters: {
+        type: 'object',
+        properties: {
+          commodity: {
+            type: 'string',
+            enum: [...COMMODITY_KEYS, 'overview']
+          },
+          days: {
+            type: 'number',
+            minimum: 7,
+            maximum: 365,
+            description: 'Optional number of recent days to include'
+          }
+        },
+        required: ['commodity']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'run_backtest',
+      description: 'Run astrology-based backtest logic on stored historical data for a commodity.',
+      parameters: {
+        type: 'object',
+        properties: {
+          commodity: {
+            type: 'string',
+            enum: [...COMMODITY_KEYS, 'overview']
+          },
+          lookbackDays: {
+            type: 'number',
+            minimum: 30,
+            maximum: 3650,
+            description: 'Optional backtest window in days'
+          }
+        },
+        required: ['commodity']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'run_terminal_command',
+      description: 'Execute a shell command for data/file inspection or user-requested terminal tasks. Use only if the user explicitly asks for terminal action.',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: {
+            type: 'string',
+            description: 'Full shell command to execute.'
+          },
+          threadId: {
+            type: 'string',
+            description: 'Conversation thread identifier for persistent terminal session state.'
+          }
+        },
+        required: ['command']
+      }
+    }
+  }
+];
+
+function getAgentTools({ terminalAccess }) {
+  return AGENT_TOOLS.filter(tool => {
+    const name = tool?.function?.name;
+    if (name !== 'run_terminal_command') return true;
+    return terminalAccess;
+  });
+}
 
 const BOOKS = {
   general: {
@@ -48,6 +147,11 @@ const COMMODITY_GUIDANCE = {
   bitcoin: 'Bitcoin is treated as Rahu-linked. Emphasize trend-following, node-driven cycles, and regime timing.'
 };
 
+const cache = {
+  strategyContext: null,
+  books: null
+};
+
 const shellSessions = new Map();
 
 const app = express();
@@ -67,16 +171,25 @@ app.use(express.static(ROOT));
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
-    codexConfigured: true,
-    codexModel: CODEX_MODEL,
-    dangerousTerminalEnabled: ENABLE_DANGEROUS_TERMINAL
+    zaiConfigured: Boolean(ZAI_API_KEY),
+    zaiModels: ZAI_MODELS,
+    dangerousTerminalEnabled: ENABLE_DANGEROUS_TERMINAL,
+    localAgentTerminalEnabled: ENABLE_LOCAL_AGENT_TERMINAL
   });
 });
 
 app.post('/api/agent/stream', async (req, res) => {
   setupSse(res);
-  const { message = '', commodity = 'overview', book = 'general', threadId = 'default', history = [] } = req.body || {};
+  const {
+    message = '',
+    commodity = 'overview',
+    book = 'general',
+    threadId = 'default',
+    history = [],
+    allowTerminal = false
+  } = req.body || {};
   const scope = COMMODITY_GUIDANCE[commodity] ? commodity : 'overview';
+  const terminalAccess = isTerminalAllowedForRequest(req, allowTerminal);
 
   try {
     sendEvent(res, 'status', { message: 'Preparing guidance, books, and live data' });
@@ -85,7 +198,7 @@ app.post('/api/agent/stream', async (req, res) => {
       getAstrologySnapshot(scope),
       getBacktestSummary(scope),
       searchReferenceContext(message, scope, book),
-      loadCommodityFileContext(scope)
+      getAllCommodityContext(message)
     ]);
 
     const contextBlock = buildContextBlock({
@@ -98,20 +211,20 @@ app.post('/api/agent/stream', async (req, res) => {
       commodityFiles
     });
 
-    sendEvent(res, 'status', { message: 'Running local Codex agent with books, astrology, backtest, and commodity files' });
+    sendEvent(res, 'status', { message: 'Running ZDI agentic flow (GLM 4.7) with live context and tools' });
     try {
-      const codexText = await runCodexCliAgent({
+      await runZdiAgent({
         message,
         scope,
         book,
+        threadId,
         history,
-        contextBlock
+        contextBlock,
+        terminalAccess,
+        res
       });
-      streamText(res, codexText);
-      sendEvent(res, 'final', { content: codexText });
-      return res.end();
-    } catch (codexError) {
-      sendEvent(res, 'status', { message: 'Codex CLI unavailable, using local fallback response' });
+    } catch (agentError) {
+      sendEvent(res, 'status', { message: 'ZDI model unavailable, using local context summary fallback.' });
       const fallback = [
         `Request: ${message}`,
         '',
@@ -122,12 +235,13 @@ app.post('/api/agent/stream', async (req, res) => {
         `Books: ${referenceSummary.summary}`,
         `Commodity files:\n${commodityFiles.summary}`,
         '',
-        `Codex fallback error: ${codexError.message}`
+        `Model error: ${agentError.message || 'Unknown model error'}`
       ].join('\n');
       streamText(res, fallback);
       sendEvent(res, 'final', { content: fallback });
-      return res.end();
+      return;
     }
+    return res.end();
   } catch (error) {
     sendEvent(res, 'error', { message: error.message || 'Agent request failed' });
     return res.end();
@@ -169,6 +283,8 @@ function buildContextBlock({
   referenceSummary,
   commodityFiles
 }) {
+  const bookContext = referenceSummary.booksSummary || 'No local book context available.';
+  const strategyContext = referenceSummary.strategySummary || 'No additional strategy context file found.';
   return [
     `Selected commodity: ${commodity}`,
     `Selected book: ${(BOOKS[book] || BOOKS.general).name}`,
@@ -183,7 +299,13 @@ function buildContextBlock({
     '',
     `Reference context:\n${referenceSummary.summary}`,
     '',
-    `Commodity analysis files:\n${commodityFiles.summary}`
+    `All commodity analysis files:\n${commodityFiles.summary}`,
+    '',
+    `Commodity analysis snippets:\n${commodityFiles.snippets.length ? commodityFiles.snippets.map(item => `- ${item}`).join('\n') : 'No snippets available.'}`,
+    '',
+    `Local strategy context:\n${strategyContext}`,
+    '',
+    `All local books context:\n${bookContext}`
   ].join('\n');
 }
 
@@ -261,7 +383,6 @@ async function searchReferenceContext(query, commodity, book) {
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter(term => term.length > 2);
-  const availableBooks = await listBookTitles();
   let reportText = '';
   try {
     reportText = await fs.readFile(REPORT_FILE, 'utf8');
@@ -279,32 +400,65 @@ async function searchReferenceContext(query, commodity, book) {
     }))
     .filter(item => item.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 2)
+    .slice(0, 3)
     .map(item => item.text.slice(0, 320));
 
-  const matchingBooks = availableBooks.filter(title => scoreText(title.toLowerCase(), lowerTerms, commodity, book) > 0).slice(0, 4);
-  const commodityFileContext = await loadCommodityFileContext(commodity, lowerTerms);
+  const bookCorpus = await loadBookTextCorpus();
+  const matchingBooks = (bookCorpus.books || [])
+    .filter(entry => scoreText(entry.text.toLowerCase(), lowerTerms, commodity, book) > 0)
+    .slice(0, 4)
+    .map(entry => entry.file);
+
+  const commodityFileContext = await loadCommodityFileContext(Object.entries(COMMODITY_REPORT_FILES), lowerTerms);
+  const bookSnippets = bookCorpus.books.map(entry => {
+    const snippet = summarizeTextForContext(entry.text, lowerTerms, entry.file, 420);
+    return `${entry.file}: ${snippet}`;
+  }).filter(Boolean);
+  const booksSummary = bookCorpus.books.length
+    ? `Available local books: ${bookCorpus.books.map(entry => entry.file).join(', ')}\n\n` +
+      `Relevant local books: ${matchingBooks.length ? matchingBooks.join(', ') : 'General summary from all local books'}\n\n` +
+      `Top local book snippets:\n- ${bookSnippets.slice(0, 8).join('\n- ')}`
+    : 'No local book text files found.';
+  const strategySummary = await loadStrategyContext();
+
   const summaryParts = [];
-  if (passages.length) summaryParts.push(`Relevant notes:\n- ${passages.join('\n- ')}`);
-  if (matchingBooks.length) summaryParts.push(`Relevant local books:\n- ${matchingBooks.join('\n- ')}`);
-  if (commodityFileContext.snippets.length) {
-    summaryParts.push(`Relevant commodity analysis:\n- ${commodityFileContext.snippets.join('\n- ')}`);
+  if (passages.length) {
+    summaryParts.push(`Relevant report notes:\n- ${passages.join('\n- ')}`);
   }
-  if (!summaryParts.length) {
-    summaryParts.push(`Available local books:\n- ${availableBooks.slice(0, 8).join('\n- ')}`);
+  summaryParts.push(`All books context:\n${booksSummary}`);
+  summaryParts.push(`Strategy context:\n${strategySummary}`);
+  if (commodityFileContext.snippets.length) {
+    summaryParts.push(`Commodity analysis snippets:\n- ${commodityFileContext.snippets.join('\n- ')}`);
   }
   return {
     passages,
     matchingBooks,
     commodityFiles: commodityFileContext.files,
+    booksSummary,
+    strategySummary,
     summary: summaryParts.join('\n\n')
   };
 }
 
-async function loadCommodityFileContext(selectedCommodity = 'overview', terms = []) {
-  const scopeFiles = selectedCommodity === 'overview'
-    ? Object.entries(COMMODITY_REPORT_FILES)
-    : [[selectedCommodity, COMMODITY_REPORT_FILES[selectedCommodity]]].filter(([, file]) => file);
+function summarizeTextForContext(text = '', terms = [], source = '', maxLen = 420) {
+  const blocks = String(text)
+    .replace(/\r/g, '')
+    .split(/\n{2,}/)
+    .map(block => block.replace(/\n+/g, ' ').trim())
+    .filter(Boolean)
+    .map(block => ({
+      block,
+      score: scoreText(block.toLowerCase(), terms, source, 'general')
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  if (!blocks.length) return '';
+  const picks = blocks.slice(0, Math.max(1, Math.min(2, blocks.length)));
+  return picks.map(item => item.block).join('\n').slice(0, maxLen);
+}
+
+async function loadCommodityFileContext(scopeEntries = Object.entries(COMMODITY_REPORT_FILES), terms = []) {
+  const scopeFiles = scopeEntries.filter(([, file]) => typeof file === 'string' && file);
 
   const files = [];
   for (const [commodity, file] of scopeFiles) {
@@ -342,13 +496,56 @@ async function loadCommodityFileContext(selectedCommodity = 'overview', terms = 
   return { files, snippets, summary };
 }
 
-async function listBookTitles() {
+async function getAllCommodityContext(query = '') {
+  const terms = String(query || '').toLowerCase().split(/[^a-z0-9]+/).filter(term => term.length > 2);
+  return loadCommodityFileContext(Object.entries(COMMODITY_REPORT_FILES), terms);
+}
+
+async function loadBookTextCorpus() {
+  if (cache.books) return cache.books;
+
+  const entries = [];
   try {
-    const files = await fs.readdir(BOOKS_DIR);
-    return files.filter(file => file.toLowerCase().endsWith('.pdf')).sort();
+    const files = await fs.readdir(BOOK_TEXT_DIR);
+    const textFiles = files.filter(file => file.toLowerCase().endsWith('.txt')).sort();
+    const loaded = await Promise.all(textFiles.map(async file => {
+      try {
+        return {
+          file,
+          text: await fs.readFile(path.join(BOOK_TEXT_DIR, file), 'utf8')
+        };
+      } catch {
+        return null;
+      }
+    }));
+    loaded.filter(Boolean).forEach(item => entries.push(item));
   } catch {
-    return [];
+    cache.books = { books: [] };
+    return cache.books;
   }
+
+  cache.books = { books: entries };
+  return cache.books;
+}
+
+async function loadStrategyContext() {
+  if (cache.strategyContext !== null) {
+    return cache.strategyContext;
+  }
+
+  let strategyText = '';
+  for (const candidate of STRATEGY_FILE_CANDIDATES) {
+    const candidatePath = path.join(ROOT, candidate);
+    try {
+      strategyText = await fs.readFile(candidatePath, 'utf8');
+      break;
+    } catch {
+      // Keep scanning for available strategy file candidates.
+    }
+  }
+
+  cache.strategyContext = strategyText ? strategyText.trim() : 'No extra strategy input file found.';
+  return cache.strategyContext;
 }
 
 function scoreText(text, terms, commodity, book) {
@@ -457,13 +654,38 @@ function parseProxyJson(text) {
   }
 }
 
-async function runLocalCommand(command, threadId) {
-  if (!ENABLE_DANGEROUS_TERMINAL) {
-    return { summary: 'Dangerous terminal is disabled. Set ENABLE_DANGEROUS_TERMINAL=1 to allow it.' };
+function isLocalRequest(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const remote = forwarded || req.socket?.remoteAddress || '';
+  const host = String(req.headers.host || '');
+  return (
+    remote === '127.0.0.1' ||
+    remote === '::1' ||
+    remote === '::ffff:127.0.0.1' ||
+    host.startsWith('localhost:') ||
+    host.startsWith('127.0.0.1:')
+  );
+}
+
+function isTerminalAllowedForRequest(req, allowTerminal) {
+  if (!allowTerminal) return false;
+  if (ENABLE_DANGEROUS_TERMINAL) return true;
+  return ENABLE_LOCAL_AGENT_TERMINAL && isLocalRequest(req);
+}
+
+async function runLocalCommand(command, threadId, terminalAccess) {
+  const safeCommand = String(command || '').trim();
+  if (!safeCommand) {
+    return { summary: 'No command provided.' };
+  }
+  if (!terminalAccess) {
+    return {
+      summary: 'Terminal access is disabled for this chat. Enable the Agent Terminal toggle locally or set ENABLE_DANGEROUS_TERMINAL=1.'
+    };
   }
 
   const session = getShellSession(threadId);
-  const wrapped = `cd ${shellEscape(session.cwd)}\n${command}\nprintf "\\n__ASTRO_PWD__=%s" "$PWD"`;
+  const wrapped = `cd ${shellEscape(session.cwd)}\n${safeCommand}\nprintf "\\n__ASTRO_PWD__=%s" "$PWD"`;
   const result = await runProcess('/bin/bash', ['-lc', wrapped], { cwd: session.cwd, timeoutMs: 60000 });
   const marker = '__ASTRO_PWD__=';
   const output = result.stdout || '';
@@ -506,6 +728,261 @@ function summarizeObject(value) {
   return JSON.stringify(value).slice(0, 400);
 }
 
+function normalizeHistoryMessages(history) {
+  return Array.isArray(history)
+    ? history
+        .map(item => {
+          if (!item || typeof item !== 'object') return null;
+          const role = item.role === 'assistant' ? 'assistant' : 'user';
+          const content = String(item.content || '').trim();
+          if (!content) return null;
+          return { role, content };
+        })
+        .filter(Boolean)
+    : [];
+}
+
+function normalizeToolArguments(rawArgs) {
+  if (typeof rawArgs === 'object' && rawArgs !== null) return rawArgs;
+  if (typeof rawArgs === 'string') {
+    try {
+      return JSON.parse(rawArgs);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function toPositiveInt(value, fallback, min = 1, max = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function normalizeToolCommodity(value, fallback) {
+  const candidate = String(value || fallback || '').toLowerCase();
+  if (candidate && COMMODITY_GUIDANCE[candidate]) return candidate;
+  if (candidate === 'overview') return fallback || 'overview';
+  return fallback || 'overview';
+}
+
+function summarizeForToolResult(result, maxLen = 2400) {
+  return summarizeObject(result).slice(0, maxLen);
+}
+
+function parseToolCall(call) {
+  const toolName = call?.function?.name || call?.name;
+  const args = normalizeToolArguments(call?.function?.arguments);
+  return {
+    id: call?.id || `${toolName || 'tool'}_${Date.now()}`,
+    name: toolName,
+    args
+  };
+}
+
+function buildAgentMessages({ message, scope, book, history, contextBlock }) {
+  const selectedBook = BOOKS[book] || BOOKS.general;
+  return [
+    { role: 'system', content: ZDI_SYSTEM_PROMPT },
+    { role: 'system', content: `Selected commodity: ${scope}` },
+    { role: 'system', content: `Selected book: ${selectedBook.name}` },
+    { role: 'system', content: contextBlock },
+    { role: 'system', content: `Current book summary: ${selectedBook.summary}` },
+    ...normalizeHistoryMessages(history).slice(-8),
+    { role: 'user', content: `User request: ${String(message || '').trim()}` }
+  ];
+}
+
+async function executeToolCall(toolCall, scope, threadId, terminalAccess) {
+  if (toolCall.name === 'get_market_snapshot') {
+    const commodity = normalizeToolCommodity(toolCall.args.commodity, scope);
+    const days = toPositiveInt(toolCall.args.days, 10, 1, 365);
+    const snapshot = await getMarketSnapshot(commodity, days);
+    return {
+      kind: 'market_snapshot',
+      commodity,
+      summary: snapshot.summary,
+      snapshot
+    };
+  }
+
+  if (toolCall.name === 'run_backtest') {
+    const commodity = normalizeToolCommodity(toolCall.args.commodity, scope);
+    const lookbackDays = toPositiveInt(toolCall.args.lookbackDays, 180, 30, 3650);
+    const summary = await getBacktestSummary(commodity, lookbackDays);
+    return {
+      kind: 'backtest',
+      commodity,
+      lookbackDays,
+      summary
+    };
+  }
+
+  if (toolCall.name === 'run_terminal_command') {
+    const command = String(toolCall.args.command || '').trim();
+    return runLocalCommand(command, toolCall.args.threadId || threadId, terminalAccess);
+  }
+
+  return { summary: `Unsupported tool call: ${toolCall.name}` };
+}
+
+async function callZdiModel({ messages, tools, stream }) {
+  if (!ZAI_API_KEY) {
+    throw new Error('ZAI API key is not configured. Set ZAI_API_KEY in environment variables.');
+  }
+
+  const toolPayload = tools ? { tools, tool_choice: 'auto' } : {};
+  let lastError = null;
+  for (const model of ZAI_MODELS) {
+    try {
+      const response = await fetch(`${ZAI_API_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${ZAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          ...toolPayload,
+          temperature: 0.25,
+          max_tokens: 2200,
+          stream
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let message = `API error (${response.status})`;
+        try {
+          const payload = JSON.parse(errorText);
+          message = payload?.error?.message || payload?.message || message;
+        } catch {
+          if (errorText) message = errorText;
+        }
+        throw new Error(message);
+      }
+
+      return stream ? response : response.json();
+    } catch (error) {
+      lastError = error;
+      console.warn('ZDI model call failed, trying fallback:', error.message);
+    }
+  }
+
+  throw lastError || new Error('No ZDI model succeeded');
+}
+
+async function streamZdiCompletion(messages, res) {
+  const response = await callZdiModel({
+    messages,
+    stream: true,
+    tools: null
+  });
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let fullText = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value, { stream: true });
+    const lines = chunk.split('\n').filter(line => line.trim() !== '');
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') continue;
+      try {
+        const payload = JSON.parse(data);
+        const delta = payload.choices?.[0]?.delta?.content;
+        if (delta) {
+          fullText += delta;
+          sendEvent(res, 'delta', { content: fullText });
+        }
+      } catch (error) {
+        // Ignore malformed JSON from streaming transport.
+      }
+    }
+  }
+
+  return fullText;
+}
+
+async function runZdiAgent({ message, scope, book, threadId, history, contextBlock, terminalAccess, res }) {
+  const messages = buildAgentMessages({
+    message,
+    scope,
+    book,
+    history,
+    contextBlock
+  });
+
+  const maxToolTurns = 2;
+  let turn = 0;
+  while (turn < maxToolTurns) {
+    turn += 1;
+    const plan = await callZdiModel({
+      messages,
+      tools: getAgentTools({ terminalAccess }),
+      stream: false
+    });
+    const assistantMessage = plan?.choices?.[0]?.message;
+    if (!assistantMessage) {
+      throw new Error('No response from ZDI model');
+    }
+
+    const toolCalls = Array.isArray(assistantMessage.tool_calls)
+      ? assistantMessage.tool_calls.map(parseToolCall).filter(Boolean)
+      : [];
+
+    if (!toolCalls.length) {
+      const finalMessages = [
+        ...messages,
+        {
+          role: 'assistant',
+          content: assistantMessage.content || ''
+        }
+      ];
+      sendEvent(res, 'status', { message: 'Generating final response' });
+      const finalText = await streamZdiCompletion(finalMessages, res);
+      if (!finalText) {
+        throw new Error('ZDI model returned an empty answer');
+      }
+      sendEvent(res, 'final', { content: finalText });
+      return;
+    }
+
+    messages.push({
+      role: 'assistant',
+      content: assistantMessage.content || '',
+      tool_calls: assistantMessage.tool_calls || []
+    });
+
+    for (const toolCall of toolCalls) {
+      if (!toolCall.name) continue;
+      sendEvent(res, 'tool', { name: toolCall.name, arguments: toolCall.args });
+      const result = await executeToolCall(toolCall, scope, threadId, terminalAccess);
+      messages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        name: toolCall.name,
+        content: JSON.stringify(result)
+      });
+      sendEvent(res, 'tool_result', {
+        name: toolCall.name,
+        result: summarizeForToolResult(result)
+      });
+    }
+  }
+
+  const fallback = 'I collected enough execution context, but can only run a limited number of tool steps per message. Please ask one follow-up for a single result.';
+  sendEvent(res, 'error', { message: fallback });
+  streamText(res, fallback);
+  sendEvent(res, 'final', { content: fallback });
+}
+
 function formatSeriesSummary(points, prefix) {
   return points
     .map(point => `- ${point.date}: ${prefix}${Number(point.close).toFixed(2)}`)
@@ -544,45 +1021,4 @@ function runProcess(command, args, options = {}) {
     if (stdin) child.stdin.write(stdin);
     child.stdin.end();
   });
-}
-
-async function runCodexCliAgent({ message, scope, book, history, contextBlock }) {
-  const prompt = [
-    'You are an integrated astrology trading and coding agent running inside the local Codex CLI.',
-    'Use the provided context first, including books, backtests, astrology snapshots, and commodity analysis files.',
-    'Be concise, direct, and operational.',
-    'Treat planetary dates as timing windows, not exact trigger timestamps.',
-    'Assume sentiment can shift 1-3 trading sessions before the listed date.',
-    'Recommend acting 1-2 sessions early only when price action, volume, or momentum already confirms the expected turn.',
-    'When describing bearish or bullish periods, present the listed date as the center of the window, not necessarily the first move.',
-    '',
-    contextBlock,
-    '',
-    'Recent chat history:',
-    ...history.slice(-6).map(item => `${item.role}: ${String(item.content || '')}`),
-    '',
-    `Current commodity scope: ${scope}`,
-    `Selected book: ${(BOOKS[book] || BOOKS.general).name}`,
-    `User request: ${message}`
-  ].join('\n');
-
-  const args = [
-    'exec',
-    '-m',
-    CODEX_MODEL,
-    '--dangerously-bypass-approvals-and-sandbox',
-    '--skip-git-repo-check',
-    '--color',
-    'never',
-    '-C',
-    ROOT,
-    '-'
-  ];
-
-  const result = await runProcess('codex', args, {
-    cwd: ROOT,
-    stdin: prompt,
-    timeoutMs: 180000
-  });
-  return (result.stdout || result.stderr || '').trim();
 }

@@ -517,19 +517,27 @@
         <div class="thread-row">
             <div class="thread-row-top">
                 <label class="thread-label" for="thread-select">Thread</label>
-                <select class="thread-actions" aria-label="Thread actions" onchange="handleThreadAction(this.value)">
-                    <option value="">Manage</option>
-                    <option value="new-chat">New chat</option>
-                    <option value="new-thread">New thread</option>
-                    <option value="delete-thread">Delete thread</option>
-                </select>
-            </div>
-            <div class="chat-mode-row">
-                <label class="thread-label" for="chat-mode-select">Mode</label>
-                <select id="chat-mode-select" class="thread-select" onchange="setChatMode(this.value)">
-                    <option value="codex">Codex</option>
-                    <option value="zai">Z.ai</option>
-                </select>
+                <div class="thread-action-group" role="group" aria-label="Thread actions">
+                    <button class="thread-action-btn" onclick="startNewChat()" title="New chat" aria-label="Start new chat">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <path d="M12 8v8M8 12h8" stroke-linecap="round" />
+                        </svg>
+                    </button>
+                    <button class="thread-action-btn" onclick="createNewThread()" title="New thread" aria-label="Create new thread">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <path d="M7 17.5V6.4c0-.8.7-1.5 1.5-1.5h5.8l3.3 3.3v9.3c0 .8-.7 1.5-1.5 1.5H8.5c-.8 0-1.5-.7-1.5-1.5z" />
+                            <path d="M14.3 4.9V8h3.3" />
+                        </svg>
+                    </button>
+                    <button class="thread-action-btn thread-action-btn--danger" onclick="deleteCurrentThread()" title="Delete thread" aria-label="Delete thread">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <path d="M3 7h18" />
+                            <path d="M8 7V5h8v2" />
+                            <path d="M9 11v7M12 11v7M15 11v7" />
+                            <rect x="5" y="7" width="14" height="13" rx="1" />
+                        </svg>
+                    </button>
+                </div>
             </div>
             <div class="agent-url-row" id="agent-url-row">
                 <label class="thread-label" for="agent-url-input">Backend</label>
@@ -537,6 +545,14 @@
                     <input type="url" id="agent-url-input" class="agent-url-input" placeholder="https://your-server.example.com/api/agent/stream">
                     <button class="agent-url-save" onclick="saveAgentUrl()">Use</button>
                 </div>
+                <label class="agent-toggle-row" for="agent-terminal-toggle">
+                    <span class="agent-toggle-copy">
+                        <span class="thread-label">Agent Terminal</span>
+                        <span class="agent-toggle-hint" id="agent-terminal-hint">Terminal access unavailable on this deployment.</span>
+                    </span>
+                    <input type="checkbox" id="agent-terminal-toggle" class="agent-toggle-input">
+                    <span class="agent-toggle-pill" aria-hidden="true"></span>
+                </label>
             </div>
             <select id="thread-select" class="thread-select" onchange="switchThread(this.value)"></select>
         </div>

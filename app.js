@@ -4,14 +4,6 @@ const CONFIG = {
         key: 'S9ZYCKGLYTDLOWTZ',
         cacheTime: 3600000
     },
-    zai: {
-        key: 'f06361dee1044c2387e21d15deb5c917.loNg83Ixj4zcQJF5',
-        url: 'https://api.z.ai/api/coding/paas/v4',
-        model: 'glm-5',
-        fallbackModel: 'GLM-4.7-Flash',
-        maxTokens: 4000,
-        maxContinuations: 2
-    },
     agent: {
         url: '/api/agent/stream'
     },
@@ -248,8 +240,13 @@ const state = {
     chatStore: {},
     priceHistory: { gold: [], silver: [], copper: [], bitcoin: [] },
     isSending: false,
-    chatMode: localStorage.getItem('chatMode') || 'codex',
-    agentUrl: getDefaultAgentUrl()
+    agentUrl: getDefaultAgentUrl(),
+    allowTerminal: localStorage.getItem('allowAgentTerminal') === 'true',
+    health: {
+        dangerousTerminalEnabled: false,
+        localAgentTerminalEnabled: false,
+        zaiConfigured: false
+    }
 };
 
 function getRecommendationSnapshot(key) {
@@ -361,22 +358,18 @@ function setAgentStatus(text) {
     if (badge) badge.textContent = text;
 }
 
-function setChatMode(mode) {
-    state.chatMode = mode === 'zai' ? 'zai' : 'codex';
-    localStorage.setItem('chatMode', state.chatMode);
-    const select = document.getElementById('chat-mode-select');
-    if (select && select.value !== state.chatMode) select.value = state.chatMode;
-    updateAgentUrlUI();
-    setAgentStatus(state.chatMode === 'codex' ? 'Codex ready' : 'Z.ai ready');
-}
-
 function updateAgentUrlUI() {
-    const row = document.getElementById('agent-url-row');
     const input = document.getElementById('agent-url-input');
     if (input && input.value !== state.agentUrl) input.value = state.agentUrl;
-    if (!row) return;
-    const show = state.chatMode === 'codex' && window.location.hostname.includes('github.io');
-    row.classList.toggle('active', show);
+    const toggle = document.getElementById('agent-terminal-toggle');
+    if (toggle) toggle.checked = Boolean(state.allowTerminal);
+    const hint = document.getElementById('agent-terminal-hint');
+    if (hint) {
+        const available = state.health.dangerousTerminalEnabled || state.health.localAgentTerminalEnabled;
+        hint.textContent = available
+            ? (state.allowTerminal ? 'Terminal access enabled for this chat.' : 'Terminal access available when toggle is on.')
+            : 'Terminal access unavailable on this deployment.';
+    }
 }
 
 function saveAgentUrl() {
@@ -386,11 +379,44 @@ function saveAgentUrl() {
     state.agentUrl = value;
     if (value) {
         localStorage.setItem('agentUrl', value);
-        setAgentStatus('Codex backend saved');
+        setAgentStatus('Backend URL saved');
     } else {
         localStorage.removeItem('agentUrl');
-        setAgentStatus('Codex backend cleared');
+        setAgentStatus('Backend URL cleared');
     }
+    updateAgentUrlUI();
+    refreshAgentHealth();
+}
+
+function setAgentTerminalAccess(enabled) {
+    state.allowTerminal = Boolean(enabled);
+    localStorage.setItem('allowAgentTerminal', String(state.allowTerminal));
+    updateAgentUrlUI();
+    setAgentStatus(state.allowTerminal ? 'Agent terminal enabled' : 'Agent terminal disabled');
+}
+
+async function refreshAgentHealth() {
+    const agentUrl = state.agentUrl || CONFIG.agent.url;
+    if (!agentUrl) return;
+
+    try {
+        const healthUrl = agentUrl.replace(/\/api\/agent\/stream\/?$/, '/api/health');
+        const response = await fetch(healthUrl, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`Health check failed (${response.status})`);
+        const payload = await response.json();
+        state.health = {
+            dangerousTerminalEnabled: Boolean(payload.dangerousTerminalEnabled),
+            localAgentTerminalEnabled: Boolean(payload.localAgentTerminalEnabled),
+            zaiConfigured: Boolean(payload.zaiConfigured)
+        };
+    } catch (error) {
+        state.health = {
+            dangerousTerminalEnabled: false,
+            localAgentTerminalEnabled: false,
+            zaiConfigured: false
+        };
+    }
+
     updateAgentUrlUI();
 }
 
@@ -1147,11 +1173,13 @@ function saveChatHistory() {
 
 function getWelcomeMessage() {
     const scope = getChatScope();
-    const modeText = state.chatMode === 'codex' ? 'Codex' : 'Z.ai';
+    const terminalNote = state.allowTerminal
+        ? ' Terminal access is enabled for explicit local agent tasks.'
+        : '';
     if (COMMODITY_CONTEXT[scope]) {
-        return `You are in ${COMMODITY_CONTEXT[scope].name}. ${modeText} will use the selected reference, current live prices, and local commodity analysis files when answering.`;
+        return `You are in ${COMMODITY_CONTEXT[scope].name}. ZDI will use the selected reference, current live prices, all local books, strategy input, and local commodity analysis files when answering.${terminalNote}`;
     }
-    return `Ask about Gold, Silver, Copper, Bitcoin, timing, or portfolio decisions. ${modeText} will use the selected reference, current live prices, and local commodity analysis files in the reply.`;
+    return `Ask about Gold, Silver, Copper, Bitcoin, timing, or portfolio decisions. ZDI will use the selected reference, current live prices, all local books, strategy input, and local commodity analysis files in the reply.${terminalNote}`;
 }
 
 function renderCurrentChatHistory() {
@@ -1198,15 +1226,6 @@ function createNewThread() {
     saveChatHistory();
     renderCurrentChatHistory();
     document.getElementById('chat-input')?.focus();
-}
-
-function handleThreadAction(action) {
-    if (!action) return;
-    if (action === 'new-chat') startNewChat();
-    if (action === 'new-thread') createNewThread();
-    if (action === 'delete-thread') deleteCurrentThread();
-    const actions = document.querySelector('.thread-actions');
-    if (actions) actions.value = '';
 }
 
 function switchThread(threadId) {
@@ -1263,45 +1282,6 @@ function summarizeAnalysisText(text) {
         .slice(0, 2400);
 }
 
-async function getContextForCurrentView() {
-    // Get commodity context if viewing a specific commodity
-    const commodityCtx = COMMODITY_CONTEXT[state.currentView];
-    
-    // Get selected book
-    const bookSelect = document.getElementById('book-select');
-    const book = bookSelect?.value || 'general';
-    const bookCtx = BOOKS[book]?.context || BOOKS.general.context;
-    
-    // Combine contexts
-    let context = bookCtx;
-    
-    // Add commodity-specific context if viewing a commodity
-    if (commodityCtx) {
-        context += `\n\n${commodityCtx.context}`;
-    }
-    
-    // Add current prices
-    context += `\n\nCURRENT PRICES:
-- Gold: ₹${state.prices.gold.price || '--'} (${state.prices.gold.change || '--'})
-- Silver: ₹${state.prices.silver.price || '--'} (${state.prices.silver.change || '--'})
-- Copper: ₹${state.prices.copper.price || '--'} (${state.prices.copper.change || '--'})
-- Bitcoin: $${state.prices.bitcoin.price?.toLocaleString() || '--'} (${state.prices.bitcoin.change24h?.toFixed(2) || '--'}%)`;
-
-    const analysisFiles = await loadAnalysisFileContext();
-    const analysisEntries = state.currentView === 'overview'
-        ? Object.entries(analysisFiles)
-        : [[state.currentView, analysisFiles[state.currentView]]].filter(([, text]) => text);
-
-    if (analysisEntries.length) {
-        context += '\n\nLOCAL COMMODITY ANALYSIS FILES:\n';
-        analysisEntries.forEach(([key, text]) => {
-            context += `\n[${key.toUpperCase()}]\n${summarizeAnalysisText(text)}\n`;
-        });
-    }
-    
-    return context;
-}
-
 async function sendChat() {
     const input = document.getElementById('chat-input');
     const msg = input.value.trim();
@@ -1318,168 +1298,42 @@ async function sendChat() {
     }
     saveChatHistory();
     
-    // Get combined context
-    const context = await getContextForCurrentView();
-    
     // Create streaming message placeholder
     const streamingMsgId = 'stream-' + Date.now();
     addStreamingMessage(streamingMsgId);
     setAgentStatus('Agent thinking');
 
-    if (state.chatMode === 'codex') {
-        try {
-            const fullReply = await sendChatViaAgent({
-                msg,
-                history,
-                thread,
-                streamingMsgId
-            });
-            if (fullReply) {
-                finalizeStreamingMessage(streamingMsgId, fullReply);
-                history.push({ role: 'assistant', content: fullReply });
-                saveChatHistory();
-                renderThreadOptions();
-                setAgentStatus('Codex ready');
-                state.isSending = false;
-                return;
-            }
-            throw new Error('Empty agent response');
-        } catch (agentError) {
-            console.error('Agent backend error:', agentError);
-            setAgentStatus('Codex offline');
-            removeStreamingMessage(streamingMsgId);
-            const message = String(agentError?.message || '');
-            const isStaticDeploy = window.location.hostname.includes('github.io');
-            const codexError = (isStaticDeploy || message.includes('(405)'))
-                ? `⚠️ Codex mode requires a real backend server. This GitHub Pages deployment cannot handle POST /api/agent/stream. Add your backend URL above, or run the app with \`npm start\`. Current backend: ${state.agentUrl || 'not set'}.`
-                : `⚠️ ${message || 'Codex backend unavailable.'}`;
-            addMessageToUI('assistant', codexError);
+    try {
+        const fullReply = await sendChatViaAgent({
+            msg,
+            history,
+            thread,
+            streamingMsgId
+        });
+        if (fullReply) {
+            finalizeStreamingMessage(streamingMsgId, fullReply);
+            history.push({ role: 'assistant', content: fullReply });
+            saveChatHistory();
+            renderThreadOptions();
+            setAgentStatus('ZDI ready');
             state.isSending = false;
             return;
         }
+
+        throw new Error('Empty agent response');
+    } catch (agentError) {
+        console.error('Agent backend error:', agentError);
+        setAgentStatus('Agent backend unavailable');
+        removeStreamingMessage(streamingMsgId);
+        const message = String(agentError?.message || '');
+        const isStaticDeploy = window.location.hostname.includes('github.io');
+        const backendError = (isStaticDeploy || message.includes('(405)'))
+            ? `⚠️ Backend endpoint required. This deployment needs a running Node server with /api/agent/stream. Add the backend URL above or run \`npm start\`. Current backend: ${state.agentUrl || 'not set'}.`
+            : `⚠️ ${message || 'Agent backend unavailable.'}`;
+        addMessageToUI('assistant', backendError);
+        state.isSending = false;
     }
-    
-    // Try primary model, fallback to glm-4.7-flash if rate limited
-    const models = [CONFIG.zai.model, CONFIG.zai.fallbackModel];
-    let fullReply = '';
-    let lastError = null;
-    
-    for (const model of models) {
-        try {
-            let continuationCount = 0;
-            let needsContinuation = false;
 
-            do {
-                needsContinuation = false;
-                const requestMessages = [
-                    { role: 'system', content: context },
-                    ...history.slice(-10)
-                ];
-
-                if (fullReply) {
-                    requestMessages.push({ role: 'assistant', content: fullReply });
-                    requestMessages.push({
-                        role: 'user',
-                        content: 'Continue exactly from where you stopped. Do not repeat previous text. Finish the answer completely.'
-                    });
-                }
-
-                const res = await fetch(`${CONFIG.zai.url}/chat/completions`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${CONFIG.zai.key}`
-                    },
-                    body: JSON.stringify({
-                        model: model,
-                        messages: requestMessages,
-                        max_tokens: CONFIG.zai.maxTokens,
-                        temperature: 0.7,
-                        stream: true
-                    })
-                });
-                
-                if (!res.ok) {
-                    const errorText = await res.text();
-                    let message = `API error (${res.status})`;
-                    try {
-                        const errorData = JSON.parse(errorText);
-                        message = errorData.error?.message || errorData.message || message;
-                    } catch {
-                        if (errorText) message = errorText;
-                    }
-                    throw new Error(message);
-                }
-                
-                const reader = res.body.getReader();
-                const decoder = new TextDecoder();
-                let finishReason = null;
-                
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    
-                    const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split('\n').filter(line => line.trim() !== '');
-                    
-                    for (const line of lines) {
-                        if (!line.startsWith('data: ')) continue;
-                        const data = line.slice(6);
-                        if (data === '[DONE]') continue;
-                        
-                        try {
-                            const json = JSON.parse(data);
-                            const choice = json.choices?.[0];
-                            const content = choice?.delta?.content;
-                            if (content) {
-                                fullReply += content;
-                                updateStreamingMessage(streamingMsgId, fullReply);
-                            }
-                            if (choice?.finish_reason) {
-                                finishReason = choice.finish_reason;
-                            }
-                        } catch (e) {
-                            // Skip invalid JSON
-                        }
-                    }
-                }
-
-                if (finishReason === 'length' && continuationCount < CONFIG.zai.maxContinuations) {
-                    needsContinuation = true;
-                    continuationCount += 1;
-                }
-            } while (needsContinuation);
-            
-            if (fullReply) {
-                finalizeStreamingMessage(streamingMsgId, fullReply);
-                history.push({ role: 'assistant', content: fullReply });
-                saveChatHistory();
-                renderThreadOptions();
-                setAgentStatus('Z.ai ready');
-                state.isSending = false;
-                return;  // Success
-            }
-            
-        } catch (e) {
-            lastError = e;
-            console.error(`Model ${model} error:`, e);
-            // Continue to next model
-        }
-    }
-    
-    // If we get here, both models failed
-    removeStreamingMessage(streamingMsgId);
-    const message = String(lastError?.message || '').toLowerCase();
-    let errorMsg = '⚠️ Connection error. Please try again.';
-    if (message.includes('weekly/monthly limit exhausted') || message.includes('rate') || message.includes('limit')) {
-        errorMsg = `⚠️ ${lastError.message}`;
-    } else if (message.includes('insufficient balance') || message.includes('no resource package') || message.includes('recharge')) {
-        errorMsg = `⚠️ ${lastError.message}`;
-    } else if (message.includes('405') || message.includes('agent backend unavailable')) {
-        errorMsg = '⚠️ Codex endpoint is not available on this deployment. Use Z.ai here or run the local Codex server.';
-    }
-    addMessageToUI('assistant', errorMsg);
-    setAgentStatus('Z.ai offline');
     state.isSending = false;
 }
 
@@ -1488,7 +1342,7 @@ async function sendChatViaAgent({ msg, history, thread, streamingMsgId }) {
     const book = bookSelect?.value || 'general';
     const agentUrl = state.agentUrl || CONFIG.agent.url;
     if (!agentUrl) {
-        throw new Error('Codex backend URL is not configured');
+        throw new Error('Agent backend URL is not configured');
     }
     const response = await fetch(agentUrl, {
         method: 'POST',
@@ -1500,7 +1354,8 @@ async function sendChatViaAgent({ msg, history, thread, streamingMsgId }) {
             commodity: COMMODITY_CONTEXT[state.currentView] ? state.currentView : 'overview',
             book,
             threadId: thread.id,
-            history: history.slice(-8)
+            history: history.slice(-8),
+            allowTerminal: state.allowTerminal
         })
     });
 
@@ -1666,11 +1521,17 @@ document.addEventListener('DOMContentLoaded', () => {
     initChatResize();
     initCharts();
     renderRecommendations();
+    refreshAgentHealth();
     refreshAllData();
     updateCountdowns();
     updateChatContext();
-    setChatMode(state.chatMode);
     updateAgentUrlUI();
+    document.getElementById('agent-terminal-toggle')?.addEventListener('change', event => {
+        setAgentTerminalAccess(event.target.checked);
+    });
+    document.getElementById('agent-url-input')?.addEventListener('change', () => {
+        refreshAgentHealth();
+    });
     document.getElementById('book-select')?.addEventListener('change', () => {
         updateChatContext();
         renderCurrentChatHistory();

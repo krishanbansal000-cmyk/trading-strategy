@@ -45,14 +45,17 @@ async function main() {
     await page.goto(SERVER_URL, { waitUntil: 'networkidle' });
     await page.screenshot({ path: path.join(OUTPUT_DIR, 'dashboard-local.png'), fullPage: true });
 
-    await page.selectOption('#chat-mode-select', 'codex');
+    await page.waitForSelector('#agent-terminal-toggle');
+    await page.click('label[for="agent-terminal-toggle"]');
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'dashboard-local-terminal-toggle.png'), fullPage: true });
+
     await page.fill('#chat-input', 'Give a compact gold analysis and mention the local commodity file basis.');
     await page.click('.input-row button');
     await page.waitForFunction(() => {
       const messages = [...document.querySelectorAll('#chat-messages .msg-content')];
       return messages.some(node => /gold/i.test(node.textContent || '') && /local/i.test(node.textContent || ''));
     }, { timeout: 120000 });
-    await page.screenshot({ path: path.join(OUTPUT_DIR, 'dashboard-local-codex-chat.png'), fullPage: true });
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'dashboard-local-zdi-chat.png'), fullPage: true });
 
     await page.goto('https://krishanbansal000-cmyk.github.io/trading-strategy/', { waitUntil: 'networkidle' });
     await page.screenshot({ path: path.join(OUTPUT_DIR, 'dashboard-prod.png'), fullPage: true });
