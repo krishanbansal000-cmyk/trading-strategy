@@ -15,10 +15,7 @@ function getDefaultAgentUrl() {
     if (saved) return saved;
     const queryValue = new URLSearchParams(window.location.search).get('agent_url');
     if (queryValue) return queryValue;
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return '/api/agent/stream';
-    }
-    return 'http://127.0.0.1:3000/api/agent/stream';
+    return '/api/agent/stream';
 }
 
 const ANALYSIS_FILES = {
