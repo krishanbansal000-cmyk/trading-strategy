@@ -539,13 +539,9 @@
                     </button>
                 </div>
             </div>
-            <div class="agent-key-row" id="agent-key-row">
-                <label class="thread-label" for="api-key-input">ZAI API Key</label>
-                <div class="agent-key-controls">
-                    <input type="password" id="api-key-input" class="agent-key-input" placeholder="Paste your ZAI key for browser-side GLM 4.7 chat">
-                    <button class="agent-key-save" onclick="saveApiKey()">Use</button>
-                </div>
-                <p class="agent-key-hint" id="api-key-hint">Paste your ZAI key to enable direct browser chat. The key stays in this browser, not in the repo.</p>
+            <div class="agent-runtime-row" id="agent-runtime-row">
+                <span class="thread-label">Agent Runtime</span>
+                <p class="agent-runtime-hint" id="agent-runtime-hint">Netlify agent uses glm-4.7 with server-side context, books, strategy rules, and backtest support.</p>
             </div>
             <select id="thread-select" class="thread-select" onchange="switchThread(this.value)"></select>
         </div>

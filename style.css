@@ -872,53 +872,20 @@ body {
     min-width: 42px;
 }
 
-.agent-key-row {
+.agent-runtime-row {
     display: flex;
     flex-direction: column;
     gap: 0.3rem;
 }
 
-.agent-key-controls {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.35rem;
-}
-
-.agent-key-input {
-    width: 100%;
-    min-width: 0;
-    padding: 0.5rem 0.65rem;
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    color: var(--text-primary);
-    font-size: 0.76rem;
-}
-
-.agent-key-input:focus {
-    outline: none;
-    border-color: var(--gold);
-}
-
-.agent-key-save {
-    padding: 0.45rem 0.7rem;
-    background: var(--gold-dim);
-    border: 1px solid rgba(251, 191, 36, 0.3);
-    border-radius: 8px;
-    color: var(--gold);
-    font-size: 0.74rem;
-    cursor: pointer;
-    white-space: nowrap;
-}
-
-.agent-key-save:hover {
-    border-color: var(--gold);
-}
-
-.agent-key-hint {
+.agent-runtime-hint {
     font-size: 0.72rem;
     color: var(--text-secondary);
     line-height: 1.35;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.02);
 }
 
 .thread-row-top {

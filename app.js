@@ -4,17 +4,12 @@ const CONFIG = {
         key: 'S9ZYCKGLYTDLOWTZ',
         cacheTime: 3600000
     },
-    zai: {
-        apiUrl: 'https://api.z.ai/api/coding/paas/v4/chat/completions',
-        primaryModel: 'glm-4.7',
-        fallbackModel: 'GLM-4.7-Flash'
+    agent: {
+        url: '/.netlify/functions/agent',
+        primaryModel: 'glm-4.7'
     },
     refreshInterval: 3600000
 };
-
-function getStoredApiKey() {
-    return localStorage.getItem('zaiApiKey') || '';
-}
 
 const ANALYSIS_FILES = {
     gold: 'gold_analysis_2026-03-13.md',
@@ -247,7 +242,6 @@ const state = {
     chatStore: {},
     priceHistory: { gold: [], silver: [], copper: [], bitcoin: [] },
     isSending: false,
-    apiKey: getStoredApiKey(),
     contextReady: false
 };
 
@@ -360,30 +354,11 @@ function setAgentStatus(text) {
     if (badge) badge.textContent = text;
 }
 
-function updateApiKeyUI() {
-    const input = document.getElementById('api-key-input');
-    if (input && input.value !== state.apiKey) input.value = state.apiKey;
-    const hint = document.getElementById('api-key-hint');
+function updateAgentRuntimeUI() {
+    const hint = document.getElementById('agent-runtime-hint');
     if (hint) {
-        hint.textContent = state.apiKey
-            ? `Stored in this browser only. Chat uses ${CONFIG.zai.primaryModel} with local books, files, and strategy context.`
-            : 'Paste your ZAI key to enable direct browser chat. The key stays in this browser, not in the repo.';
+        hint.textContent = `Netlify agent uses ${CONFIG.agent.primaryModel} with server-side context, books, strategy rules, and backtest support.`;
     }
-}
-
-function saveApiKey() {
-    const input = document.getElementById('api-key-input');
-    if (!input) return;
-    const value = input.value.trim();
-    state.apiKey = value;
-    if (value) {
-        localStorage.setItem('zaiApiKey', value);
-        setAgentStatus(`${CONFIG.zai.primaryModel} key saved`);
-    } else {
-        localStorage.removeItem('zaiApiKey');
-        setAgentStatus('ZAI key cleared');
-    }
-    updateApiKeyUI();
 }
 
 function applyChatWidth(width) {
@@ -1394,107 +1369,40 @@ function normalizeModelContent(content) {
     return '';
 }
 
-async function buildAgentMessages({ msg, history }) {
+async function sendChatViaAgent({ msg, history }) {
     const scope = getChatScope();
     const book = document.getElementById('book-select')?.value || 'general';
-    const analysisContext = await loadAnalysisFileContext();
-    const bookTexts = await loadBookTextContext();
-    const strategyContext = await loadStrategyContext();
+    const response = await fetch(CONFIG.agent.url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            message: msg,
+            commodity: scope,
+            book,
+            history: history.slice(-7, -1),
+            liveMarketContext: buildLiveMarketContext(),
+            priceHistory: state.priceHistory,
+            prices: state.prices
+        })
+    });
 
-    const selectedBook = BOOKS[book] || BOOKS.general;
-    const selectedCommodity = COMMODITY_CONTEXT[scope];
-    const recentHistory = history.slice(-7, -1).map(item => ({
-        role: item.role,
-        content: item.content
-    }));
-
-    const systemPrompt = [
-        'You are ZDI, a browser-based trading and astrology advisor focused on gold, silver, copper, and bitcoin.',
-        `Primary model: ${CONFIG.zai.primaryModel}.`,
-        'Do not mention any backend, terminal, tool call, or unavailable server.',
-        'Answer from the local context pack provided below. Treat that as the working knowledge base for this app session.',
-        'Be practical and concise. Use bullet points when the user asks for advice, setups, or timing.',
-        'Always treat dates as timing windows, not exact turn timestamps.',
-        'If a chart view is relevant, refer to the recent 7-day price series already included in the context.',
-        'Do not fabricate backtests or private data. If something is missing, say what is missing.',
-        '',
-        `Selected commodity: ${selectedCommodity ? selectedCommodity.name : 'Overview / cross-market'}`,
-        `Selected reference book: ${selectedBook.name}`,
-        '',
-        'LOCAL CONTEXT PACK',
-        '',
-        'Commodity guidance:',
-        selectedCommodity ? selectedCommodity.context : BOOKS.general.context,
-        '',
-        'Live market snapshot:',
-        buildLiveMarketContext(),
-        '',
-        'Analysis files digest:',
-        buildAnalysisDigest(analysisContext, scope),
-        '',
-        'Books digest:',
-        buildBooksDigest(bookTexts, msg, scope, book),
-        '',
-        'Strategy digest:',
-        buildStrategyDigest(strategyContext)
-    ].join('\n');
-
-    const userPrompt = [
-        `User question: ${msg}`,
-        '',
-        'Response requirements:',
-        '- Lead with the direct answer.',
-        '- Give actionable interpretation based on the timing-window rules.',
-        '- Mention the strongest supporting local file or book angle when relevant.',
-        '- If recommending patience, say what confirmation to wait for.'
-    ].join('\n');
-
-    return [
-        { role: 'system', content: systemPrompt },
-        ...recentHistory,
-        { role: 'user', content: userPrompt }
-    ];
-}
-
-async function requestZaiCompletion(messages) {
-    if (!state.apiKey) {
-        throw new Error('ZAI API key missing. Paste it in the chat panel and save it in this browser first.');
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Netlify agent failed (${response.status}): ${errorText.slice(0, 220)}`);
     }
 
-    const models = [CONFIG.zai.primaryModel, CONFIG.zai.fallbackModel].filter(Boolean);
-    let lastError = null;
-
-    for (const model of models) {
-        try {
-            const response = await fetch(CONFIG.zai.apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${state.apiKey}`
-                },
-                body: JSON.stringify({
-                    model,
-                    temperature: 0.35,
-                    max_tokens: 1400,
-                    messages
-                })
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`${model} request failed (${response.status}): ${errorText.slice(0, 200)}`);
-            }
-
-            const payload = await response.json();
-            const content = normalizeModelContent(payload?.choices?.[0]?.message?.content);
-            if (content) return { content, model };
-            throw new Error(`${model} returned an empty response.`);
-        } catch (error) {
-            lastError = error;
-        }
+    const payload = await response.json();
+    const content = normalizeModelContent(payload?.reply || payload?.content);
+    if (!content) {
+        throw new Error('Netlify agent returned an empty response.');
     }
 
-    throw lastError || new Error('ZAI request failed.');
+    return {
+        content,
+        model: payload?.model || CONFIG.agent.primaryModel
+    };
 }
 
 async function warmContextCaches() {
@@ -1525,11 +1433,10 @@ async function sendChat() {
     // Create streaming message placeholder
     const streamingMsgId = 'stream-' + Date.now();
     addStreamingMessage(streamingMsgId);
-    setAgentStatus(`Consulting ${CONFIG.zai.primaryModel}`);
+    setAgentStatus(`Consulting ${CONFIG.agent.primaryModel}`);
 
     try {
-        const messages = await buildAgentMessages({ msg, history });
-        const result = await requestZaiCompletion(messages);
+        const result = await sendChatViaAgent({ msg, history });
         if (result?.content) {
             finalizeStreamingMessage(streamingMsgId, result.content);
             history.push({ role: 'assistant', content: result.content });
@@ -1652,16 +1559,13 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshAllData();
     updateCountdowns();
     updateChatContext();
-    updateApiKeyUI();
+    updateAgentRuntimeUI();
     warmContextCaches()
         .then(() => setAgentStatus('Local context ready'))
         .catch(error => {
             console.warn('Context warmup failed:', error);
             setAgentStatus('Context partial');
         });
-    document.getElementById('api-key-input')?.addEventListener('change', () => {
-        saveApiKey();
-    });
     document.getElementById('book-select')?.addEventListener('change', () => {
         updateChatContext();
         renderCurrentChatHistory();

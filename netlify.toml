@@ -1,0 +1,16 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  included_files = [
+    "book_text/**",
+    "*_analysis_2026-03-13.md",
+    "strategy.md",
+    "strategy.txt",
+    "trading-strategy.md",
+    "trading-strategy.txt"
+  ]
+
+[functions."agent"]
+  node_bundler = "esbuild"
