@@ -33,6 +33,14 @@ const BOOK_TEXT_FILES = [
 ];
 
 const STRATEGY_FILE_CANDIDATES = ['strategy.md', 'strategy.txt', 'trading-strategy.md', 'trading-strategy.txt'];
+const CODE_CONTEXT_FILES = [
+    'README.md',
+    'server.js',
+    'app.js',
+    'index.html',
+    'style.css',
+    'netlify.toml'
+];
 
 // ETF Symbols on NSE
 const ETF_SYMBOLS = {
@@ -1325,6 +1333,32 @@ async function loadStrategyContext() {
     return loadStrategyContext.cache;
 }
 
+async function loadCodeContext() {
+    if (loadCodeContext.cache) return loadCodeContext.cache;
+
+    loadCodeContext.cache = (async () => {
+        const entries = await Promise.all(
+            CODE_CONTEXT_FILES.map(async file => {
+                try {
+                    const response = await fetch(file, { cache: 'no-store' });
+                    if (!response.ok) return null;
+                    const text = await response.text();
+                    return {
+                        file,
+                        name: file.split('/').pop(),
+                        text
+                    };
+                } catch {
+                    return null;
+                }
+            })
+        );
+        return entries.filter(Boolean);
+    })();
+
+    return loadCodeContext.cache;
+}
+
 function summarizeAnalysisText(text) {
     return String(text || '')
         .replace(/\r/g, '')
@@ -1334,6 +1368,17 @@ function summarizeAnalysisText(text) {
         .slice(0, 18)
         .join('\n')
         .slice(0, 2400);
+}
+
+function summarizeCodeText(text) {
+    return String(text || '')
+        .replace(/\r/g, '')
+        .split('\n')
+        .map(line => line.trimEnd())
+        .filter(line => line.trim())
+        .slice(0, 80)
+        .join('\n')
+        .slice(0, 2800);
 }
 
 function normalizeSearchTerms(query, scope, book) {
@@ -1422,6 +1467,15 @@ function buildStrategyDigest(strategyContext) {
         `Optional repo strategy file: ${strategyContext.file || 'none found'}`,
         strategyContext.text
     ].join('\n').slice(0, 5000);
+}
+
+function buildCodeDigest(codeContext, query) {
+    const terms = normalizeSearchTerms(`${query} code app server frontend chart context strategy books`, 'overview', 'general');
+    return codeContext.map(entry => {
+        const excerpt = extractRelevantSnippets(entry.text, terms, 2, 1400);
+        const content = excerpt || summarizeCodeText(entry.text);
+        return `[CODE FILE] ${entry.name}\n${content}`;
+    }).join('\n\n').slice(0, 8500);
 }
 
 function normalizeModelContent(content) {
@@ -1540,6 +1594,10 @@ function buildDirectPrompt({ requestContext, history }) {
         '',
         `ACTIVE BOOK MODE:\n${BOOKS[requestContext.book]?.name || BOOKS.general.name}`,
         '',
+        `SELECTED BOOK / PROFILE GUIDANCE:\n${toolOutputs.bookModeContext}`,
+        '',
+        `ACTIVE COMMODITY GUIDANCE:\n${toolOutputs.commodityGuidance}`,
+        '',
         `LIVE MARKET SNAPSHOT:\n${toolOutputs.marketSnapshot}`,
         '',
         `ANALYSIS FILE DIGEST:\n${toolOutputs.analysisDigest}`,
@@ -1547,6 +1605,8 @@ function buildDirectPrompt({ requestContext, history }) {
         `BOOK EXCERPTS:\n${toolOutputs.bookDigest}`,
         '',
         `STRATEGY RULES:\n${toolOutputs.strategyRules}`,
+        '',
+        `REPO CODE CONTEXT:\n${toolOutputs.codeDigest}`,
         '',
         `RECENT CHAT HISTORY:\n${historyText || 'No prior messages.'}`,
         '',
@@ -1599,11 +1659,18 @@ function buildAgentSystemPrompt() {
 
 function collectFrontendToolOutputs(requestContext) {
     const chart = requestContext.chart || (detectChartIntent(requestContext.message) ? buildChartPayload(requestContext.scope, requestContext.message) : null);
+    const bookModeContext = BOOKS[requestContext.book]?.context || BOOKS.general.context;
+    const commodityGuidance = requestContext.scope && requestContext.scope !== 'overview'
+        ? COMMODITY_CONTEXT[requestContext.scope]?.context || 'Overview mode.'
+        : Object.values(COMMODITY_CONTEXT).map(item => `${item.name}\n${item.context}`).join('\n\n').slice(0, 4500);
     const outputs = {
+        bookModeContext,
+        commodityGuidance,
         marketSnapshot: buildScopedMarketDigest(requestContext.scope),
         analysisDigest: buildAnalysisDigest(requestContext.analysisContext, requestContext.scope),
         bookDigest: buildBooksDigest(requestContext.bookContext, requestContext.message, requestContext.scope, requestContext.book),
         strategyRules: buildStrategyDigest(requestContext.strategyContext),
+        codeDigest: buildCodeDigest(requestContext.codeContext, requestContext.message),
         chart,
         backtest: requestContext.backtestRequested ? runLightweightBacktest(requestContext.scope) : ''
     };
@@ -1655,10 +1722,11 @@ async function sendChatViaAgent({ msg, history }) {
     }
 
     setAgentStatus('Loading LangChain runtime');
-    const [analysisContext, bookContext, strategyContext] = await Promise.all([
+    const [analysisContext, bookContext, strategyContext, codeContext] = await Promise.all([
         loadAnalysisFileContext(),
         loadBookTextContext(),
-        loadStrategyContext()
+        loadStrategyContext(),
+        loadCodeContext()
     ]);
 
     state.agentRequestContext = {
@@ -1668,6 +1736,7 @@ async function sendChatViaAgent({ msg, history }) {
         analysisContext,
         bookContext,
         strategyContext,
+        codeContext,
         chart: detectChartIntent(msg) ? buildChartPayload(scope, msg) : null,
         backtest: '',
         backtestRequested: detectBacktestIntent(msg)
@@ -1721,7 +1790,8 @@ async function warmContextCaches() {
     await Promise.all([
         loadAnalysisFileContext(),
         loadBookTextContext(),
-        loadStrategyContext()
+        loadStrategyContext(),
+        loadCodeContext()
     ]);
     state.contextReady = true;
 }
