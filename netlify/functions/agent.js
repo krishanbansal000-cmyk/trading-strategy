@@ -220,6 +220,62 @@ function runBacktest(commodity, prices) {
   };
 }
 
+function shouldReturnChart(message) {
+  return /(chart|plot|graph|show.*trend|display.*trend|visuali[sz]e)/i.test(message || '');
+}
+
+function formatChartPayload(commodity, priceHistory) {
+  if (commodity === 'overview') {
+    const goldSeries = Array.isArray(priceHistory?.gold) ? priceHistory.gold.slice(-7) : [];
+    const silverSeries = Array.isArray(priceHistory?.silver) ? priceHistory.silver.slice(-7) : [];
+    const labelsSource = goldSeries.length ? goldSeries : silverSeries;
+    if (!labelsSource.length) return null;
+    return {
+      type: 'line',
+      title: 'Gold vs Silver 7-day trend',
+      labels: labelsSource.map(point => point.date || point.label || ''),
+      datasets: [
+        {
+          label: 'Tata Gold ETF',
+          data: goldSeries.map(point => Number(point.price)),
+          borderColor: '#fbbf24',
+          backgroundColor: 'rgba(251,191,36,0.12)'
+        },
+        {
+          label: 'Groww Silver ETF',
+          data: silverSeries.map(point => Number(point.price)),
+          borderColor: '#c0c0c0',
+          backgroundColor: 'rgba(192,192,192,0.12)'
+        }
+      ]
+    };
+  }
+
+  const series = Array.isArray(priceHistory?.[commodity]) ? priceHistory[commodity].slice(-7) : [];
+  if (!series.length) return null;
+
+  const colors = {
+    gold: '#fbbf24',
+    silver: '#c0c0c0',
+    copper: '#cd7f32',
+    bitcoin: '#f7931a'
+  };
+
+  return {
+    type: 'line',
+    title: `${(COMMODITIES[commodity] || { name: commodity }).name} 7-day trend`,
+    labels: series.map(point => point.date || point.label || ''),
+    datasets: [
+      {
+        label: (COMMODITIES[commodity] || { name: commodity }).name,
+        data: series.map(point => Number(point.price)),
+        borderColor: colors[commodity] || '#fbbf24',
+        backgroundColor: 'rgba(251,191,36,0.12)'
+      }
+    ]
+  };
+}
+
 async function fetchYahooHistory(symbol, lookbackDays = 180) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=${Math.max(7, lookbackDays)}d&includePrePost=false`;
   const response = await fetch(url);
@@ -312,9 +368,11 @@ async function loadContextPack({ message, commodity, book }) {
 
 async function createReply(payload) {
   if (process.env.MOCK_ZAI === '1') {
+    const chart = shouldReturnChart(payload.message) ? formatChartPayload(payload.commodity, payload.priceHistory || {}) : null;
     return {
       model: ZAI_MODELS[0],
-      reply: `Mocked Netlify agent reply for ${payload.commodity || 'overview'}.\n\nThe function received local books, analysis context, and backtest support correctly.`
+      reply: `Mocked Netlify agent reply for ${payload.commodity || 'overview'}.\n\nThe function received local books, analysis context, and backtest support correctly.`,
+      chart
     };
   }
 
@@ -326,6 +384,7 @@ async function createReply(payload) {
   const selectedBook = BOOKS[payload.book] || BOOKS.general;
   const contextPack = await loadContextPack(payload);
   const backtest = await maybeBuildBacktestContext(payload.message, payload.commodity);
+  const chart = shouldReturnChart(payload.message) ? formatChartPayload(payload.commodity, payload.priceHistory || {}) : null;
 
   const messages = [
     {
@@ -412,7 +471,8 @@ async function createReply(payload) {
       return {
         model,
         reply,
-        backtest
+        backtest,
+        chart
       };
     } catch (error) {
       lastError = error;

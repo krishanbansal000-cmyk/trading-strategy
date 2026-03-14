@@ -1047,6 +1047,26 @@ body {
 .msg-content a { color: var(--gold); text-decoration: none; }
 .msg-content a:hover { text-decoration: underline; }
 
+.inline-chart-card {
+    margin-top: 0.85rem;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.025);
+    padding: 0.8rem;
+}
+
+.inline-chart-meta {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 0.55rem;
+}
+
+.inline-chart-wrap {
+    position: relative;
+    height: 220px;
+}
+
 .chat-input-area {
     padding: 0.7rem 0.85rem 0.8rem;
     border-top: 1px solid var(--border-color);

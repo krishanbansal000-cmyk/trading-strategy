@@ -239,6 +239,7 @@ const state = {
     currentView: 'overview',
     prices: { gold: {}, silver: {}, copper: {}, bitcoin: {} },
     charts: {},
+    chatCharts: {},
     chatStore: {},
     priceHistory: { gold: [], silver: [], copper: [], bitcoin: [] },
     isSending: false,
@@ -1140,7 +1141,7 @@ function renderCurrentChatHistory() {
         return;
     }
 
-    history.forEach(msg => addMessageToUI(msg.role, msg.content));
+    history.forEach(msg => addMessageToUI(msg.role, msg.content, { chart: msg.chart }));
 }
 
 function startNewChat() {
@@ -1407,7 +1408,8 @@ async function sendChatViaAgent({ msg, history }) {
 
     return {
         content,
-        model: payload?.model || CONFIG.agent.primaryModel
+        model: payload?.model || CONFIG.agent.primaryModel,
+        chart: payload?.chart || null
     };
 }
 
@@ -1444,8 +1446,13 @@ async function sendChat() {
     try {
         const result = await sendChatViaAgent({ msg, history });
         if (result?.content) {
-            finalizeStreamingMessage(streamingMsgId, result.content);
-            history.push({ role: 'assistant', content: result.content });
+            if (result.chart) {
+                removeStreamingMessage(streamingMsgId);
+                addMessageToUI('assistant', result.content, { chart: result.chart });
+            } else {
+                finalizeStreamingMessage(streamingMsgId, result.content);
+            }
+            history.push({ role: 'assistant', content: result.content, chart: result.chart || null });
             saveChatHistory();
             renderThreadOptions();
             setAgentStatus(`${result.model} ready`);
@@ -1502,22 +1509,88 @@ function removeStreamingMessage(id) {
     if (el) el.remove();
 }
 
+function buildInlineChartConfig(chartPayload) {
+    const labels = Array.isArray(chartPayload?.labels) ? chartPayload.labels : [];
+    const datasets = Array.isArray(chartPayload?.datasets) ? chartPayload.datasets : [];
+    return {
+        type: chartPayload?.type || 'line',
+        data: {
+            labels,
+            datasets: datasets.map((dataset, index) => ({
+                label: dataset.label || `Series ${index + 1}`,
+                data: Array.isArray(dataset.data) ? dataset.data : [],
+                borderColor: dataset.borderColor || ['#fbbf24', '#c0c0c0', '#cd7f32', '#f7931a'][index % 4],
+                backgroundColor: dataset.backgroundColor || 'rgba(251, 191, 36, 0.12)',
+                fill: Boolean(dataset.fill),
+                tension: 0.3,
+                borderWidth: 2,
+                pointRadius: 2
+            }))
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: {
+                        color: '#d6d6d6',
+                        font: { size: 11 }
+                    }
+                },
+                title: chartPayload?.title
+                    ? {
+                        display: true,
+                        text: chartPayload.title,
+                        color: '#f3f4f6',
+                        font: { size: 12, weight: '600' }
+                    }
+                    : undefined
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#9ca3af' },
+                    grid: { color: 'rgba(255,255,255,0.05)' }
+                },
+                y: {
+                    ticks: { color: '#9ca3af' },
+                    grid: { color: 'rgba(255,255,255,0.05)' }
+                }
+            }
+        }
+    };
+}
+
+function renderInlineChatChart(canvasId, chartPayload) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || typeof Chart === 'undefined') return;
+    state.chatCharts[canvasId]?.destroy?.();
+    state.chatCharts[canvasId] = new Chart(canvas, buildInlineChartConfig(chartPayload));
+}
+
 function askAI(question) {
     document.getElementById('chat-input').value = question;
     sendChat();
 }
 
-function addMessageToUI(role, content) {
+function addMessageToUI(role, content, options = {}) {
     const container = document.getElementById('chat-messages');
     const div = document.createElement('div');
     div.className = `msg ${role === 'user' ? 'user' : ''}`;
     
     const avatarClass = role === 'user' ? 'avatar' : 'avatar ai';
     const avatarText = role === 'user' ? 'You' : 'AI';
-    div.innerHTML = `<span class="${avatarClass}">${avatarText}</span><div class="msg-content">${formatContent(content)}</div>`;
+    const chart = options.chart;
+    const chartId = chart ? `chat-chart-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` : '';
+    const chartMarkup = chart
+        ? `<div class="inline-chart-card"><div class="inline-chart-meta">${escapeHtml(chart.title || 'Chart')}</div><div class="inline-chart-wrap"><canvas id="${chartId}"></canvas></div></div>`
+        : '';
+    div.innerHTML = `<span class="${avatarClass}">${avatarText}</span><div class="msg-content">${formatContent(content)}${chartMarkup}</div>`;
     
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
+    if (chart) {
+        queueMicrotask(() => renderInlineChatChart(chartId, chart));
+    }
 }
 
 function escapeHtml(text) {

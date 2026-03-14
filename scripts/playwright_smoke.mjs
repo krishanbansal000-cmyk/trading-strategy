@@ -89,13 +89,14 @@ async function main() {
     await page.goto(SERVER_URL, { waitUntil: 'networkidle' });
     await page.screenshot({ path: path.join(OUTPUT_DIR, 'dashboard-netlify-home.png'), fullPage: true });
 
-    await page.waitForSelector('#agent-runtime-hint');
-    await page.fill('#chat-input', 'Run a compact gold backtest summary and mention the strongest local file basis.');
+    await page.waitForSelector('#thread-select');
+    await page.fill('#chat-input', 'Show a compact gold chart, include the trend, and mention the strongest local file basis.');
     await page.click('.input-row button');
     await page.waitForFunction(() => {
       const messages = [...document.querySelectorAll('#chat-messages .msg-content')];
       return messages.some(node => /mocked netlify agent reply/i.test(node.textContent || ''));
     }, { timeout: 30000 });
+    await page.waitForSelector('.inline-chart-card canvas');
     await page.screenshot({ path: path.join(OUTPUT_DIR, 'dashboard-netlify-chat.png'), fullPage: true });
 
     await browser.close();
