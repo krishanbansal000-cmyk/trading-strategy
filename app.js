@@ -354,13 +354,6 @@ function setAgentStatus(text) {
     if (badge) badge.textContent = text;
 }
 
-function updateAgentRuntimeUI() {
-    const hint = document.getElementById('agent-runtime-hint');
-    if (hint) {
-        hint.textContent = `Netlify agent uses ${CONFIG.agent.primaryModel} with server-side context, books, strategy rules, and backtest support.`;
-    }
-}
-
 function applyChatWidth(width) {
     const nextWidth = Math.max(320, Math.min(720, Math.round(width)));
     document.documentElement.style.setProperty('--chat-w', `${nextWidth}px`);
@@ -1042,7 +1035,7 @@ function createThread(title = 'New thread') {
 
 function ensureScopeStore(scope = getChatScope()) {
     if (!state.chatStore[scope] || !Array.isArray(state.chatStore[scope].threads)) {
-        const thread = createThread(scope === 'overview' ? 'General chat' : `${COMMODITY_CONTEXT[scope].name}`);
+        const thread = createThread(scope === 'overview' ? 'Market Brief' : `${COMMODITY_CONTEXT[scope].name}`);
         state.chatStore[scope] = {
             activeThreadId: thread.id,
             threads: [thread]
@@ -1058,6 +1051,17 @@ function getCurrentThread() {
     const scope = getChatScope();
     const scopeStore = ensureScopeStore(scope);
     return scopeStore.threads.find(thread => thread.id === scopeStore.activeThreadId) || scopeStore.threads[0];
+}
+
+function normalizeThreadTitles() {
+    Object.values(state.chatStore).forEach(scopeStore => {
+        if (!scopeStore || !Array.isArray(scopeStore.threads)) return;
+        scopeStore.threads.forEach(thread => {
+            if (thread?.title === 'General chat') {
+                thread.title = 'Market Brief';
+            }
+        });
+    });
 }
 
 function loadChatHistory() {
@@ -1076,7 +1080,7 @@ function loadChatHistory() {
             try {
                 const parsed = JSON.parse(legacyByView) || {};
                 Object.entries(parsed).forEach(([scope, messages]) => {
-                    const thread = createThread(scope === 'overview' ? 'General chat' : 'Imported thread');
+                    const thread = createThread(scope === 'overview' ? 'Market Brief' : 'Imported thread');
                     thread.messages = Array.isArray(messages) ? messages : [];
                     state.chatStore[scope] = {
                         activeThreadId: thread.id,
@@ -1093,7 +1097,7 @@ function loadChatHistory() {
         const legacyHistory = localStorage.getItem('chatHistory');
         if (legacyHistory) {
             try {
-                const thread = createThread('General chat');
+                const thread = createThread('Market Brief');
                 thread.messages = JSON.parse(legacyHistory) || [];
                 state.chatStore.overview = {
                     activeThreadId: thread.id,
@@ -1105,6 +1109,8 @@ function loadChatHistory() {
             }
         }
     }
+    normalizeThreadTitles();
+    saveChatHistory();
     renderCurrentChatHistory();
 }
 
@@ -1559,7 +1565,6 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshAllData();
     updateCountdowns();
     updateChatContext();
-    updateAgentRuntimeUI();
     warmContextCaches()
         .then(() => setAgentStatus('Local context ready'))
         .catch(error => {

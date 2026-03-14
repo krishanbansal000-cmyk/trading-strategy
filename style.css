@@ -872,22 +872,6 @@ body {
     min-width: 42px;
 }
 
-.agent-runtime-row {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-}
-
-.agent-runtime-hint {
-    font-size: 0.72rem;
-    color: var(--text-secondary);
-    line-height: 1.35;
-    padding: 0.55rem 0.65rem;
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.02);
-}
-
 .thread-row-top {
     display: flex;
     align-items: center;
