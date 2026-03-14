@@ -375,7 +375,7 @@ function buildMessages(payload, contextPack, backtest) {
   ];
 }
 
-async function streamModelResponse(messages, controller) {
+async function fetchModelResponse(messages, controller) {
   let lastError = null;
   for (const model of ZAI_MODELS) {
     const abortController = new AbortController();
@@ -392,76 +392,22 @@ async function streamModelResponse(messages, controller) {
           model,
           temperature: 0.35,
           max_tokens: 1100,
-          stream: true,
+          stream: false,
           messages
         }),
         signal: abortController.signal
       });
-      if (!response.ok || !response.body) {
+      if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`${model} failed (${response.status}): ${errorText.slice(0, 220)}`);
       }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let fullReply = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const chunks = buffer.split('\n\n');
-        buffer = chunks.pop() || '';
-        for (const chunk of chunks) {
-          const lines = chunk.split('\n').filter(Boolean);
-          for (const line of lines) {
-            if (!line.startsWith('data:')) continue;
-            const dataText = line.slice(5).trim();
-            if (dataText === '[DONE]') continue;
-            let payload;
-            try {
-              payload = JSON.parse(dataText);
-            } catch {
-              continue;
-            }
-            const delta = normalizeModelContent(payload?.choices?.[0]?.delta?.content);
-            if (delta) {
-              fullReply += delta;
-              encodeLine(controller, { type: 'delta', content: delta });
-            }
-          }
-        }
-      }
-
+      const payload = await response.json();
       clearTimeout(timeout);
-      if (fullReply.trim()) {
-        return { model, reply: fullReply.trim() };
-      }
-
-      const fallbackResponse = await fetch(`${ZAI_API_URL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${ZAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model,
-          temperature: 0.35,
-          max_tokens: 900,
-          stream: false,
-          messages
-        })
-      });
-      if (!fallbackResponse.ok) {
-        const fallbackErrorText = await fallbackResponse.text();
-        throw new Error(`${model} fallback failed (${fallbackResponse.status}): ${fallbackErrorText.slice(0, 220)}`);
-      }
-      const fallbackJson = await fallbackResponse.json();
-      const fallbackReply = normalizeModelContent(fallbackJson?.choices?.[0]?.message?.content);
-      if (!fallbackReply) throw new Error(`${model} returned empty content.`);
-      encodeLine(controller, { type: 'delta', content: fallbackReply });
-      return { model, reply: fallbackReply };
+      const reply = normalizeModelContent(payload?.choices?.[0]?.message?.content);
+      if (!reply) throw new Error(`${model} returned empty content.`);
+      encodeLine(controller, { type: 'status', message: 'Formatting response' });
+      encodeLine(controller, { type: 'delta', content: reply });
+      return { model, reply };
     } catch (error) {
       clearTimeout(timeout);
       lastError = error;
@@ -496,7 +442,7 @@ async function runAgent(payload, controller) {
 
   encodeLine(controller, { type: 'status', message: 'Preparing model request' });
   const messages = buildMessages(payload, contextPack, backtest);
-  const result = await streamModelResponse(messages, controller);
+  const result = await fetchModelResponse(messages, controller);
   encodeLine(controller, {
     type: 'final',
     model: result.model,
