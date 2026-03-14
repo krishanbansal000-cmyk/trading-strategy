@@ -1410,6 +1410,7 @@ async function sendChatViaAgent({ msg, history }) {
     let content = '';
     let model = CONFIG.agent.primaryModel;
     let chart = null;
+    let finalReply = '';
 
     while (true) {
         const { done, value } = await reader.read();
@@ -1435,10 +1436,15 @@ async function sendChatViaAgent({ msg, history }) {
             } else if (event.type === 'final') {
                 model = event.model || model;
                 chart = event.chart || null;
+                finalReply = event.reply || finalReply;
             } else if (event.type === 'error') {
                 throw new Error(event.message || 'Agent failed.');
             }
         }
+    }
+
+    if (!content.trim() && finalReply.trim()) {
+        content = finalReply.trim();
     }
 
     if (!content.trim()) {

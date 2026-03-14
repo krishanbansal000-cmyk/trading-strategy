@@ -435,8 +435,33 @@ async function streamModelResponse(messages, controller) {
       }
 
       clearTimeout(timeout);
-      if (!fullReply.trim()) throw new Error(`${model} returned empty content.`);
-      return { model, reply: fullReply.trim() };
+      if (fullReply.trim()) {
+        return { model, reply: fullReply.trim() };
+      }
+
+      const fallbackResponse = await fetch(`${ZAI_API_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${ZAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.35,
+          max_tokens: 900,
+          stream: false,
+          messages
+        })
+      });
+      if (!fallbackResponse.ok) {
+        const fallbackErrorText = await fallbackResponse.text();
+        throw new Error(`${model} fallback failed (${fallbackResponse.status}): ${fallbackErrorText.slice(0, 220)}`);
+      }
+      const fallbackJson = await fallbackResponse.json();
+      const fallbackReply = normalizeModelContent(fallbackJson?.choices?.[0]?.message?.content);
+      if (!fallbackReply) throw new Error(`${model} returned empty content.`);
+      encodeLine(controller, { type: 'delta', content: fallbackReply });
+      return { model, reply: fallbackReply };
     } catch (error) {
       clearTimeout(timeout);
       lastError = error;
@@ -448,11 +473,11 @@ async function streamModelResponse(messages, controller) {
 
 async function runAgent(payload, controller) {
   if (process.env.MOCK_ZAI === '1') {
+    const reply = `Mocked Netlify agent reply for ${payload.commodity || 'overview'}. The function received local books, analysis context, streaming updates, and chart support correctly.`;
     const chart = shouldReturnChart(payload.message) ? formatChartPayload(payload.commodity, payload.priceHistory || {}) : null;
     encodeLine(controller, { type: 'status', message: 'Mock agent ready' });
-    encodeLine(controller, { type: 'delta', content: `Mocked Netlify agent reply for ${payload.commodity || 'overview'}. ` });
-    encodeLine(controller, { type: 'delta', content: 'The function received local books, analysis context, streaming updates, and chart support correctly.' });
-    encodeLine(controller, { type: 'final', model: ZAI_MODELS[0], chart });
+    encodeLine(controller, { type: 'delta', content: reply });
+    encodeLine(controller, { type: 'final', model: ZAI_MODELS[0], chart, reply });
     return;
   }
 
@@ -472,7 +497,13 @@ async function runAgent(payload, controller) {
   encodeLine(controller, { type: 'status', message: 'Preparing model request' });
   const messages = buildMessages(payload, contextPack, backtest);
   const result = await streamModelResponse(messages, controller);
-  encodeLine(controller, { type: 'final', model: result.model, chart, backtest: backtest?.summary || null });
+  encodeLine(controller, {
+    type: 'final',
+    model: result.model,
+    chart,
+    backtest: backtest?.summary || null,
+    reply: result.reply
+  });
 }
 
 export default async (request) => {
