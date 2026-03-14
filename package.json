@@ -2,7 +2,7 @@
   "name": "astrology-agent-dashboard",
   "version": "1.0.0",
   "private": true,
-  "description": "Astrology trading dashboard with agent-backed chat, books, backtesting, and optional dangerous terminal access.",
+  "description": "Astrology trading dashboard with a frontend LangChain chat agent, local context loading, backtesting, and Chart.js visualizations.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -10,8 +10,10 @@
     "test:e2e": "node scripts/playwright_smoke.mjs"
   },
   "dependencies": {
+    "@langchain/openai": "^1.2.13",
     "@netlify/functions": "^5.1.3",
     "@netlify/neon": "^0.1.2",
+    "esbuild": "^0.27.4",
     "express": "^4.21.2",
     "openai": "^5.19.1"
   },

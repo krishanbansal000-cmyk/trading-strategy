@@ -539,6 +539,14 @@
                     </button>
                 </div>
             </div>
+            <div class="agent-key-row" id="agent-key-row">
+                <label class="thread-label" for="api-key-input">ZAI API Key</label>
+                <div class="agent-key-controls">
+                    <input type="password" id="api-key-input" class="agent-key-input" placeholder="Paste your ZAI key for frontend LangChain agent">
+                    <button class="agent-key-save" onclick="saveApiKey()">Use</button>
+                </div>
+                <p class="agent-key-hint" id="api-key-hint">Stored only in this browser. LangChain runs in the frontend and calls glm-4.7 directly.</p>
+            </div>
             <select id="thread-select" class="thread-select" onchange="switchThread(this.value)"></select>
         </div>
         <div class="chat-messages" id="chat-messages"></div>

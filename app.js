@@ -4,9 +4,13 @@ const CONFIG = {
         key: 'S9ZYCKGLYTDLOWTZ',
         cacheTime: 3600000
     },
-    agent: {
-        url: '/.netlify/functions/agent',
-        primaryModel: 'glm-4.7'
+    zai: {
+        apiUrl: 'https://api.z.ai/api/coding/paas/v4',
+        primaryModel: 'glm-4.7',
+        fallbackModel: 'GLM-4.7-Flash',
+        imports: {
+            openai: './vendor/langchain-openai-browser.mjs'
+        }
     },
     refreshInterval: 3600000
 };
@@ -243,8 +247,58 @@ const state = {
     chatStore: {},
     priceHistory: { gold: [], silver: [], copper: [], bitcoin: [] },
     isSending: false,
-    contextReady: false
+    contextReady: false,
+    apiKey: getStoredApiKey(),
+    langChainRuntime: null,
+    langChainRuntimePromise: null,
+    agentBundle: null,
+    agentBundlePromise: null,
+    agentRequestContext: null
 };
+
+function getStoredApiKey() {
+    return localStorage.getItem('zaiApiKey') || '';
+}
+
+function maskApiKey(apiKey) {
+    if (!apiKey) return '';
+    if (apiKey.length <= 8) return 'Saved';
+    return `${apiKey.slice(0, 4)}••••${apiKey.slice(-4)}`;
+}
+
+function updateApiKeyUI() {
+    const input = document.getElementById('api-key-input');
+    const hint = document.getElementById('api-key-hint');
+    if (input) {
+        input.value = state.apiKey;
+        input.placeholder = state.apiKey
+            ? `Saved: ${maskApiKey(state.apiKey)}`
+            : 'Paste your ZAI key for frontend LangChain agent';
+    }
+    if (hint) {
+        hint.textContent = state.apiKey
+            ? `Frontend agent ready with ${maskApiKey(state.apiKey)}. The key is stored only in this browser.`
+            : 'Stored only in this browser. LangChain runs in the frontend and calls glm-4.7 directly.';
+    }
+}
+
+function saveApiKey() {
+    const input = document.getElementById('api-key-input');
+    const nextValue = input?.value?.trim() || '';
+    state.apiKey = nextValue;
+    if (nextValue) {
+        localStorage.setItem('zaiApiKey', nextValue);
+        setAgentStatus('Frontend key saved');
+    } else {
+        localStorage.removeItem('zaiApiKey');
+        setAgentStatus('Add a ZAI key');
+    }
+    state.agentBundle = null;
+    state.agentBundlePromise = null;
+    updateApiKeyUI();
+}
+
+window.saveApiKey = saveApiKey;
 
 function getRecommendationSnapshot(key) {
     const base = RECOMMENDATION_BASE[key];
@@ -1131,9 +1185,9 @@ function saveChatHistory() {
 function getWelcomeMessage() {
     const scope = getChatScope();
     if (COMMODITY_CONTEXT[scope]) {
-        return `You are in ${COMMODITY_CONTEXT[scope].name}. GLM 4.7 will use live prices, the four local analysis files, the books corpus, and strategy timing rules for each reply.`;
+        return `You are in ${COMMODITY_CONTEXT[scope].name}. The frontend LangChain agent will use live prices, the four local analysis files, the books corpus, strategy timing rules, and Chart.js visual support for each reply.`;
     }
-    return 'Ask about Gold, Silver, Copper, Bitcoin, timing, or portfolio decisions. GLM 4.7 will answer from live prices, local books, strategy rules, and the four analysis files.';
+    return 'Ask about Gold, Silver, Copper, Bitcoin, timing, or portfolio decisions. The frontend LangChain agent will answer from live prices, local books, strategy rules, the four analysis files, and inline charts when useful.';
 }
 
 function renderCurrentChatHistory() {
@@ -1385,83 +1439,282 @@ function normalizeModelContent(content) {
     return '';
 }
 
+function detectChartIntent(message) {
+    return /(chart|plot|graph|trend|compare|visuali[sz]e)/i.test(String(message || ''));
+}
+
+function detectBacktestIntent(message) {
+    return /(backtest|test strategy|historical|what if|simulate)/i.test(String(message || ''));
+}
+
+function getChartCommodities(scope, message) {
+    const text = String(message || '').toLowerCase();
+    const mentioned = [];
+    ['gold', 'silver', 'copper', 'bitcoin'].forEach(key => {
+        if (text.includes(key) || text.includes(COMMODITY_CONTEXT[key].name.toLowerCase())) {
+            mentioned.push(key);
+        }
+    });
+    if (mentioned.length >= 2) return mentioned.slice(0, 2);
+    if (mentioned.length === 1) return mentioned;
+    if (scope && scope !== 'overview') return [scope];
+    return ['gold', 'silver'];
+}
+
+function buildChartPayload(scope, message) {
+    const keys = getChartCommodities(scope, message);
+    const sourceKey = keys.find(key => (state.priceHistory[key] || []).length) || keys[0];
+    const labels = buildChartLabels(state.priceHistory[sourceKey] || []);
+    const palette = {
+        gold: { line: '#fbbf24', fill: 'rgba(251,191,36,0.12)' },
+        silver: { line: '#d1d5db', fill: 'rgba(209,213,219,0.12)' },
+        copper: { line: '#cd7f32', fill: 'rgba(205,127,50,0.14)' },
+        bitcoin: { line: '#f7931a', fill: 'rgba(247,147,26,0.12)' }
+    };
+    const datasets = keys
+        .map(key => {
+            const history = state.priceHistory[key] || [];
+            if (!history.length) return null;
+            return {
+                label: COMMODITY_CONTEXT[key]?.name || key,
+                data: history.map(point => point.price),
+                borderColor: palette[key]?.line,
+                backgroundColor: palette[key]?.fill,
+                fill: true
+            };
+        })
+        .filter(Boolean);
+
+    if (!datasets.length) return null;
+
+    const title = datasets.length > 1
+        ? `${datasets.map(dataset => dataset.label).join(' vs ')} 7-day trend`
+        : `${datasets[0].label} 7-day trend`;
+
+    return {
+        type: 'line',
+        title,
+        labels,
+        datasets
+    };
+}
+
+function runLightweightBacktest(scope) {
+    const keys = scope && scope !== 'overview' ? [scope] : ['gold', 'silver', 'copper', 'bitcoin'];
+    const reports = keys.map(key => {
+        const history = state.priceHistory[key] || [];
+        if (history.length < 3) {
+            return `${COMMODITY_CONTEXT[key].name}: insufficient local chart history for a 7-day backtest.`;
+        }
+        const prices = history.map(point => Number(point.price)).filter(Number.isFinite);
+        const start = prices[0];
+        const end = prices[prices.length - 1];
+        const totalReturn = start ? (((end - start) / start) * 100).toFixed(2) : '0.00';
+        const dailyMoves = prices.slice(1).map((price, index) => ((price - prices[index]) / prices[index]) * 100);
+        const positiveDays = dailyMoves.filter(move => move > 0).length;
+        const averageMove = dailyMoves.length
+            ? (dailyMoves.reduce((sum, move) => sum + move, 0) / dailyMoves.length).toFixed(2)
+            : '0.00';
+        return `${COMMODITY_CONTEXT[key].name}: 7-day return ${totalReturn}%, positive sessions ${positiveDays}/${dailyMoves.length}, average daily move ${averageMove}%.`;
+    });
+    return reports.join('\n');
+}
+
+function buildScopedMarketDigest(scope) {
+    if (!scope || scope === 'overview') return buildLiveMarketContext();
+    return buildLiveMarketContext()
+        .split('\n\n')
+        .find(block => block.startsWith(COMMODITY_CONTEXT[scope]?.name || '')) || buildLiveMarketContext();
+}
+
+function buildDirectPrompt({ requestContext, history }) {
+    const toolOutputs = requestContext.toolOutputs || collectFrontendToolOutputs(requestContext);
+    const historyText = history
+        .slice(-6)
+        .map(entry => `${entry.role.toUpperCase()}: ${entry.content}`)
+        .join('\n')
+        .slice(0, 2500);
+
+    return [
+        `USER QUESTION:\n${requestContext.message}`,
+        '',
+        `ACTIVE BOOK MODE:\n${BOOKS[requestContext.book]?.name || BOOKS.general.name}`,
+        '',
+        `LIVE MARKET SNAPSHOT:\n${toolOutputs.marketSnapshot}`,
+        '',
+        `ANALYSIS FILE DIGEST:\n${toolOutputs.analysisDigest}`,
+        '',
+        `BOOK EXCERPTS:\n${toolOutputs.bookDigest}`,
+        '',
+        `STRATEGY RULES:\n${toolOutputs.strategyRules}`,
+        '',
+        `RECENT CHAT HISTORY:\n${historyText || 'No prior messages.'}`,
+        '',
+        requestContext.backtestRequested
+            ? `BACKTEST SNAPSHOT:\n${toolOutputs.backtest || 'No backtest output.'}`
+            : 'BACKTEST SNAPSHOT:\nOnly run or mention the backtest if it is useful to answer the question.',
+        '',
+        toolOutputs.chart
+            ? `CHART PAYLOAD SUMMARY:\n${JSON.stringify({
+                title: toolOutputs.chart.title,
+                series: toolOutputs.chart.datasets.map(dataset => dataset.label)
+            })}`
+            : 'CHART PAYLOAD SUMMARY:\nNo chart requested.',
+        '',
+        'RESPONSE RULES:',
+        '- Answer as a trading-and-astrology research agent.',
+        '- Use timing windows rather than exact turn days.',
+        '- Mention one-day-before or two-days-before action only with price confirmation.',
+        '- If chart data is attached, reference the chart explicitly.',
+        '- Keep the tone decisive but not overconfident.'
+    ].join('\n');
+}
+
+async function ensureLangChainRuntime() {
+    if (state.langChainRuntime) return state.langChainRuntime;
+    if (!state.langChainRuntimePromise) {
+        state.langChainRuntimePromise = import(CONFIG.zai.imports.openai).then(openAiModule => {
+            const runtime = {
+                ChatOpenAI: openAiModule.ChatOpenAI
+            };
+            state.langChainRuntime = runtime;
+            return runtime;
+        });
+    }
+    return state.langChainRuntimePromise;
+}
+
+function buildAgentSystemPrompt() {
+    return [
+        'You are Astro Trading Research, a frontend LangChain market-and-astrology analyst for commodity and crypto timing decisions.',
+        'Reason from the supplied local tool outputs before giving trading guidance.',
+        'Use the correct instrument names: Tata Gold ETF, Groww Silver ETF, Hindustan Copper, Bitcoin.',
+        'Treat all planetary dates as timing windows, not exact timestamps.',
+        'Only mention one-day-before or two-days-before entries when price action is already aligning.',
+        'If the user asks for a chart, refer to the attached chart data explicitly.',
+        'If the user asks for a backtest, clearly label it as lightweight local backtesting.',
+        'Avoid mentioning backend services, Netlify, Codex, or hidden infrastructure. This is a frontend agent.'
+    ].join('\n');
+}
+
+function collectFrontendToolOutputs(requestContext) {
+    const chart = requestContext.chart || (detectChartIntent(requestContext.message) ? buildChartPayload(requestContext.scope, requestContext.message) : null);
+    const outputs = {
+        marketSnapshot: buildScopedMarketDigest(requestContext.scope),
+        analysisDigest: buildAnalysisDigest(requestContext.analysisContext, requestContext.scope),
+        bookDigest: buildBooksDigest(requestContext.bookContext, requestContext.message, requestContext.scope, requestContext.book),
+        strategyRules: buildStrategyDigest(requestContext.strategyContext),
+        chart,
+        backtest: requestContext.backtestRequested ? runLightweightBacktest(requestContext.scope) : ''
+    };
+    requestContext.chart = chart;
+    requestContext.toolOutputs = outputs;
+    return outputs;
+}
+
+async function ensureFrontendAgent() {
+    if (!state.apiKey) {
+        throw new Error('Add a ZAI API key to use the frontend LangChain agent.');
+    }
+    if (state.agentBundle) return state.agentBundle;
+    if (!state.agentBundlePromise) {
+        state.agentBundlePromise = (async () => {
+            const runtime = await ensureLangChainRuntime();
+            const { ChatOpenAI } = runtime;
+            const sharedConfig = {
+                apiKey: state.apiKey,
+                temperature: 0.2,
+                maxTokens: 1100,
+                configuration: {
+                    baseURL: CONFIG.zai.apiUrl,
+                    dangerouslyAllowBrowser: true
+                }
+            };
+            const primaryModel = new ChatOpenAI({
+                model: CONFIG.zai.primaryModel,
+                ...sharedConfig
+            });
+            const fallbackModel = new ChatOpenAI({
+                model: CONFIG.zai.fallbackModel,
+                ...sharedConfig
+            });
+
+            state.agentBundle = { primaryModel, fallbackModel };
+            return state.agentBundle;
+        })();
+    }
+    return state.agentBundlePromise;
+}
+
 async function sendChatViaAgent({ msg, history }) {
     const currentScope = getChatScope();
     const scope = currentScope === 'overview' ? inferCommodityFromMessage(msg) : currentScope;
     const book = document.getElementById('book-select')?.value || 'general';
-    const response = await fetch(CONFIG.agent.url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            message: msg,
-            commodity: scope,
-            book,
-            history: history.slice(-7, -1),
-            liveMarketContext: buildLiveMarketContext(),
-            priceHistory: state.priceHistory,
-            prices: state.prices
-        })
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Netlify agent failed (${response.status}): ${errorText.slice(0, 220)}`);
+    if (!state.apiKey) {
+        throw new Error('Add your ZAI API key above to use the frontend agent.');
     }
 
-    if (!response.body) {
-        throw new Error('Netlify agent stream is unavailable.');
-    }
+    setAgentStatus('Loading LangChain runtime');
+    const [analysisContext, bookContext, strategyContext] = await Promise.all([
+        loadAnalysisFileContext(),
+        loadBookTextContext(),
+        loadStrategyContext()
+    ]);
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let content = '';
-    let model = CONFIG.agent.primaryModel;
-    let chart = null;
-    let finalReply = '';
+    state.agentRequestContext = {
+        scope,
+        book,
+        message: msg,
+        analysisContext,
+        bookContext,
+        strategyContext,
+        chart: detectChartIntent(msg) ? buildChartPayload(scope, msg) : null,
+        backtest: '',
+        backtestRequested: detectBacktestIntent(msg)
+    };
 
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+    try {
+        setAgentStatus('Preparing frontend tools');
+        collectFrontendToolOutputs(state.agentRequestContext);
+        const { primaryModel, fallbackModel } = await ensureFrontendAgent();
+        const prompt = buildDirectPrompt({
+            requestContext: state.agentRequestContext,
+            history
+        });
+        const messages = [
+            { role: 'system', content: buildAgentSystemPrompt() },
+            { role: 'user', content: prompt }
+        ];
 
-        for (const rawLine of lines) {
-            const line = rawLine.trim();
-            if (!line) continue;
-            let event;
-            try {
-                event = JSON.parse(line);
-            } catch {
-                continue;
+        setAgentStatus(`Calling ${CONFIG.zai.primaryModel}`);
+        try {
+            const primaryResponse = await primaryModel.invoke(messages);
+            const primaryContent = normalizeModelContent(primaryResponse?.content);
+            if (primaryContent) {
+                return {
+                    content: primaryContent,
+                    model: primaryResponse?.response_metadata?.model_name || CONFIG.zai.primaryModel,
+                    chart: state.agentRequestContext.chart
+                };
             }
-
-            if (event.type === 'status') {
-                setAgentStatus(event.message || 'Working');
-            } else if (event.type === 'delta') {
-                content += event.content || '';
-            } else if (event.type === 'final') {
-                model = event.model || model;
-                chart = event.chart || null;
-                finalReply = event.reply || finalReply;
-            } else if (event.type === 'error') {
-                throw new Error(event.message || 'Agent failed.');
-            }
+        } catch (primaryError) {
+            console.warn('Primary LangChain model call failed, using fallback model.', primaryError);
         }
-    }
 
-    if (!content.trim() && finalReply.trim()) {
-        content = finalReply.trim();
+        setAgentStatus(`Calling ${CONFIG.zai.fallbackModel}`);
+        const fallbackResponse = await fallbackModel.invoke(messages);
+        const fallbackContent = normalizeModelContent(fallbackResponse?.content);
+        if (!fallbackContent) {
+            throw new Error('The frontend model returned an empty response.');
+        }
+        return {
+            content: fallbackContent,
+            model: fallbackResponse?.response_metadata?.model_name || CONFIG.zai.fallbackModel,
+            chart: state.agentRequestContext.chart
+        };
+    } finally {
+        state.agentRequestContext = null;
     }
-
-    if (!content.trim()) {
-        throw new Error('Netlify agent returned an empty response.');
-    }
-
-    return { content: content.trim(), model, chart };
 }
 
 async function warmContextCaches() {
@@ -1492,7 +1745,7 @@ async function sendChat() {
     // Create streaming message placeholder
     const streamingMsgId = 'stream-' + Date.now();
     addStreamingMessage(streamingMsgId);
-    setAgentStatus(`Consulting ${CONFIG.agent.primaryModel}`);
+    setAgentStatus(`Consulting ${CONFIG.zai.primaryModel}`);
     let ticker = null;
 
     try {
@@ -1702,12 +1955,20 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshAllData();
     updateCountdowns();
     updateChatContext();
+    updateApiKeyUI();
     warmContextCaches()
-        .then(() => setAgentStatus('Local context ready'))
+        .then(() => setAgentStatus(state.apiKey ? 'Frontend context ready' : 'Add a ZAI key'))
         .catch(error => {
             console.warn('Context warmup failed:', error);
             setAgentStatus('Context partial');
         });
+    document.getElementById('api-key-input')?.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            saveApiKey();
+            document.getElementById('chat-input')?.focus();
+        }
+    });
     document.getElementById('book-select')?.addEventListener('change', () => {
         updateChatContext();
         renderCurrentChatHistory();

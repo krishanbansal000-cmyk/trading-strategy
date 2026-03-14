@@ -945,6 +945,64 @@ body {
     border-color: var(--gold);
 }
 
+.agent-key-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    margin-bottom: 0.8rem;
+}
+
+.agent-key-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.agent-key-input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    padding: 0.55rem 0.7rem;
+    font-size: 0.82rem;
+}
+
+.agent-key-input:focus {
+    outline: none;
+    border-color: var(--gold);
+}
+
+.agent-key-save {
+    border: 1px solid rgba(251, 191, 36, 0.35);
+    background: rgba(251, 191, 36, 0.12);
+    color: var(--gold);
+    border-radius: 10px;
+    padding: 0.55rem 0.8rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.agent-key-save:hover,
+.agent-key-save:focus {
+    background: rgba(251, 191, 36, 0.2);
+    outline: none;
+}
+
+.agent-key-hint {
+    margin: 0;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: var(--text-dim);
+}
+
 .chat-messages {
     flex: 1;
     min-height: 0;

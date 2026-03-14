@@ -13,6 +13,7 @@ const SERVER_URL = 'http://127.0.0.1:3000';
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.md': 'text/markdown; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
@@ -50,41 +51,6 @@ async function serveStatic(req, res) {
 
 async function createServer() {
   const server = http.createServer(async (req, res) => {
-    if (req.method === 'POST' && req.url === '/.netlify/functions/agent') {
-      let body = '';
-      req.on('data', chunk => {
-        body += chunk;
-      });
-      req.on('end', async () => {
-        const payload = JSON.parse(body || '{}');
-        const chart = {
-          type: 'line',
-          title: 'Tata Gold ETF 7-day trend',
-          labels: ['Mar 8', 'Mar 9', 'Mar 10', 'Mar 11', 'Mar 12', 'Mar 13', 'Mar 14'],
-          datasets: [
-            {
-              label: 'Tata Gold ETF',
-              data: [62.1, 62.4, 62.8, 63.2, 63.0, 63.5, 63.9],
-              borderColor: '#fbbf24',
-              backgroundColor: 'rgba(251,191,36,0.12)'
-            }
-          ]
-        };
-
-        res.writeHead(200, {
-          'Content-Type': 'application/x-ndjson; charset=utf-8',
-          'Cache-Control': 'no-store'
-        });
-        res.write(JSON.stringify({ type: 'status', message: 'Loading context' }) + '\n');
-        res.write(JSON.stringify({ type: 'status', message: 'Calling glm-4.7' }) + '\n');
-        res.write(JSON.stringify({ type: 'delta', content: `Mocked Netlify agent reply for ${payload.commodity || 'overview'}. ` }) + '\n');
-        res.write(JSON.stringify({ type: 'delta', content: 'The function received local books, analysis context, streaming updates, and chart support correctly.' }) + '\n');
-        res.write(JSON.stringify({ type: 'final', model: 'glm-4.7', chart }) + '\n');
-        res.end();
-      });
-      return;
-    }
-
     await serveStatic(req, res);
   });
 
@@ -100,18 +66,48 @@ async function main() {
     const browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } });
 
+    await page.route('https://api.z.ai/**', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json; charset=utf-8',
+        body: JSON.stringify({
+          id: 'chatcmpl-mocked',
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model: 'glm-4.7',
+          choices: [
+            {
+              index: 0,
+              finish_reason: 'stop',
+              message: {
+                role: 'assistant',
+                content: 'Mocked frontend LangChain reply for gold. The local books, analysis files, strategy rules, and charting path are all wired correctly.'
+              }
+            }
+          ],
+          usage: {
+            prompt_tokens: 120,
+            completion_tokens: 34,
+            total_tokens: 154
+          }
+        })
+      });
+    });
+
     await page.goto(SERVER_URL, { waitUntil: 'networkidle' });
-    await page.screenshot({ path: path.join(OUTPUT_DIR, 'dashboard-netlify-home.png'), fullPage: true });
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'dashboard-frontend-home.png'), fullPage: true });
 
     await page.waitForSelector('#thread-select');
+    await page.fill('#api-key-input', 'zai-browser-test-key');
+    await page.click('.agent-key-save');
     await page.fill('#chat-input', 'Show a compact gold chart, include the trend, and mention the strongest local file basis.');
     await page.click('.input-row button');
     await page.waitForFunction(() => {
       const messages = [...document.querySelectorAll('#chat-messages .msg-content')];
-      return messages.some(node => /mocked netlify agent reply/i.test(node.textContent || ''));
+      return messages.some(node => /mocked frontend langchain reply/i.test(node.textContent || ''));
     }, { timeout: 30000 });
     await page.waitForSelector('.inline-chart-card canvas');
-    await page.screenshot({ path: path.join(OUTPUT_DIR, 'dashboard-netlify-chat.png'), fullPage: true });
+    await page.screenshot({ path: path.join(OUTPUT_DIR, 'dashboard-frontend-chat.png'), fullPage: true });
 
     await browser.close();
   } finally {

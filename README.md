@@ -1,6 +1,6 @@
 # Financial Astrology Trading Strategies
 
-A trading dashboard with Netlify Function based `glm-4.7` chat, local commodity context, and built-in charting.
+A frontend-only trading dashboard with a browser-side LangChain `glm-4.7` chat flow, local commodity context, and built-in Chart.js visualizations.
 
 ## Covered Assets
 
@@ -13,24 +13,21 @@ A trading dashboard with Netlify Function based `glm-4.7` chat, local commodity 
 
 ## How It Works
 
-The chat runs through `/.netlify/functions/agent`. The ZAI key stays server-side in Netlify environment variables, and the function builds a context pack from:
+The chat runs fully in the browser. The user supplies their own `ZAI` API key, and the frontend LangChain flow builds a context pack from:
 
 - the four commodity analysis files in the repo
 - the `book_text/*.txt` corpus
 - the built-in timing-window strategy rules and the personal chart/profile context
 - any optional `strategy.md`, `strategy.txt`, `trading-strategy.md`, or `trading-strategy.txt`
-- the current chart state sent from the frontend
-- a lightweight server-side astrology backtest when the user asks for historical validation
+- the current chart state and recent price history in the browser
+- a lightweight local backtest when the user asks for historical validation
 
-## Netlify Setup
+The browser runtime uses:
 
-Create these environment variables in Netlify:
-
-- `ZAI_API_KEY`
-- optional: `ZAI_PRIMARY_MODEL` (default `glm-4.7`)
-- optional: `ZAI_FALLBACK_MODEL` (default `GLM-4.7-Flash`)
-
-The function config is in [netlify.toml](/home/angle/projects/astrology/astrology/netlify.toml). It includes the books, analysis files, and optional strategy files in the function bundle.
+- `@langchain/openai` bundled locally for browser use
+- `glm-4.7` as the primary model
+- `GLM-4.7-Flash` as the fallback model
+- `Chart.js` for all inline and dashboard charts
 
 ## Running Locally
 
@@ -44,15 +41,9 @@ Then open `http://127.0.0.1:3000`.
 
 ## Deployment
 
-This version is intended for `Netlify` because the agent depends on a Netlify Function.
+This version can be deployed to static hosting such as GitHub Pages or Netlify because the active chat path no longer depends on a backend runtime.
 
-GitHub Pages is no longer enough for the full agent because it cannot run the server-side function that holds the ZAI key and backtest logic.
-
-## Swiss Ephemeris Note
-
-The current Netlify agent uses rule-based astrology timing plus server-side market-data backtests. That is the most reliable free/serverless path.
-
-If you want full Swiss Ephemeris calculations inside the function, prefer a JS/WASM-compatible adapter. Native C bindings are more fragile on serverless platforms and are usually a better fit for Railway or another full backend host.
+Important: because the agent runs in the browser, the ZAI key is not hidden from the current browser session. This setup is appropriate only when the user provides their own key.
 
 ## Testing
 
@@ -62,7 +53,7 @@ Run the local smoke test:
 npm run test:e2e
 ```
 
-The Playwright test runs a local server that serves the frontend and the Netlify function endpoint with `MOCK_ZAI=1`, so the full UI-to-function flow is verified without a real key.
+The Playwright test runs a local static server, mocks the ZAI chat completion API, saves a browser-side key, sends a chat prompt, and verifies the inline Chart.js render without requiring a real key.
 
 ## Disclaimer
 
