@@ -375,46 +375,85 @@ function buildMessages(payload, contextPack, backtest) {
   ];
 }
 
-async function fetchModelResponse(messages, controller) {
+function buildLocalFallbackReply(payload, contextPack, backtest, chart) {
+  const commodity = COMMODITIES[payload.commodity] || { name: 'Market overview', context: BOOKS.general.summary };
+  const chartNote = chart
+    ? `A 7-day chart is attached for ${commodity.name}, so use the latest slope and recent swing structure as the first confirmation layer.`
+    : 'No inline chart payload was available, so rely on the live market context summary.';
+  const backtestNote = backtest?.summary
+    ? `Backtest note: ${backtest.summary}`
+    : 'Backtest was not requested or not available in time for this turn.';
+  return [
+    `${commodity.name}: use this as a timing-window setup, not an exact reversal date.`,
+    chartNote,
+    `Core bias: ${commodity.context}`,
+    `Strategy emphasis: ${String(contextPack.strategyDigest).split('\n').slice(0, 4).join(' ')}`,
+    `Local file basis: ${String(contextPack.analysisDigest).split('\n').slice(0, 4).join(' ')}`,
+    backtestNote,
+    'Action: wait for price confirmation before sizing up, and treat one to two sessions before the timing window as valid only if momentum is already aligning.'
+  ].join('\n\n');
+}
+
+async function callZaiModel(model, messages, timeoutMs) {
+  const abortController = new AbortController();
+  const timer = setTimeout(() => abortController.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${ZAI_API_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ZAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.35,
+        max_tokens: 700,
+        stream: false,
+        messages
+      }),
+      signal: abortController.signal
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`${model} failed (${response.status}): ${errorText.slice(0, 220)}`);
+    }
+    const payload = await response.json();
+    const reply = normalizeModelContent(payload?.choices?.[0]?.message?.content);
+    if (!reply) throw new Error(`${model} returned empty content.`);
+    return reply;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchModelResponse(messages, controller, fallbackContext) {
   let lastError = null;
-  for (const model of ZAI_MODELS) {
-    const abortController = new AbortController();
-    const timeout = setTimeout(() => abortController.abort(), 22000);
+  for (let index = 0; index < ZAI_MODELS.length; index += 1) {
+    const model = ZAI_MODELS[index];
     try {
       encodeLine(controller, { type: 'status', message: `Calling ${model}` });
-      const response = await fetch(`${ZAI_API_URL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${ZAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model,
-          temperature: 0.35,
-          max_tokens: 1100,
-          stream: false,
-          messages
-        }),
-        signal: abortController.signal
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`${model} failed (${response.status}): ${errorText.slice(0, 220)}`);
-      }
-      const payload = await response.json();
-      clearTimeout(timeout);
-      const reply = normalizeModelContent(payload?.choices?.[0]?.message?.content);
-      if (!reply) throw new Error(`${model} returned empty content.`);
+      const reply = await callZaiModel(model, messages, index === 0 ? 12000 : 9000);
       encodeLine(controller, { type: 'status', message: 'Formatting response' });
       encodeLine(controller, { type: 'delta', content: reply });
       return { model, reply };
     } catch (error) {
-      clearTimeout(timeout);
       lastError = error;
       encodeLine(controller, { type: 'status', message: `${model} fallback` });
     }
   }
-  throw lastError || new Error('ZAI request failed.');
+  const fallbackReply = buildLocalFallbackReply(
+    fallbackContext.payload,
+    fallbackContext.contextPack,
+    fallbackContext.backtest,
+    fallbackContext.chart
+  );
+  encodeLine(controller, { type: 'status', message: 'Using local fallback' });
+  encodeLine(controller, { type: 'delta', content: fallbackReply });
+  return {
+    model: 'local-fallback',
+    reply: fallbackReply,
+    error: lastError?.message || 'ZAI request failed.'
+  };
 }
 
 async function runAgent(payload, controller) {
@@ -442,13 +481,14 @@ async function runAgent(payload, controller) {
 
   encodeLine(controller, { type: 'status', message: 'Preparing model request' });
   const messages = buildMessages(payload, contextPack, backtest);
-  const result = await fetchModelResponse(messages, controller);
+  const result = await fetchModelResponse(messages, controller, { payload, contextPack, backtest, chart });
   encodeLine(controller, {
     type: 'final',
     model: result.model,
     chart,
     backtest: backtest?.summary || null,
-    reply: result.reply
+    reply: result.reply,
+    error: result.error || null
   });
 }
 
