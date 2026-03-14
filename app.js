@@ -33,6 +33,7 @@ const BOOK_TEXT_FILES = [
 ];
 
 const STRATEGY_FILE_CANDIDATES = ['strategy.md', 'strategy.txt', 'trading-strategy.md', 'trading-strategy.txt'];
+const STRATEGY_CONTEXT_MANIFEST = 'strategy_context.json';
 const REPO_CONTEXT_MANIFEST = 'repo_context.json';
 const CODE_CONTEXT_FILES = [
     'README.md',
@@ -1318,6 +1319,21 @@ async function loadStrategyContext() {
     if (loadStrategyContext.cache) return loadStrategyContext.cache;
 
     loadStrategyContext.cache = (async () => {
+        try {
+            const manifestResponse = await fetch(STRATEGY_CONTEXT_MANIFEST, { cache: 'no-store' });
+            if (manifestResponse.ok) {
+                const manifest = await manifestResponse.json();
+                if (manifest && typeof manifest.text === 'string') {
+                    return {
+                        file: manifest.file || null,
+                        text: manifest.text
+                    };
+                }
+            }
+        } catch {
+            // Fall back to direct file scan in local preview.
+        }
+
         for (const file of STRATEGY_FILE_CANDIDATES) {
             try {
                 const response = await fetch(file, { cache: 'no-store' });
