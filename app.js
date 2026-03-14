@@ -1400,17 +1400,52 @@ async function sendChatViaAgent({ msg, history }) {
         throw new Error(`Netlify agent failed (${response.status}): ${errorText.slice(0, 220)}`);
     }
 
-    const payload = await response.json();
-    const content = normalizeModelContent(payload?.reply || payload?.content);
-    if (!content) {
+    if (!response.body) {
+        throw new Error('Netlify agent stream is unavailable.');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let content = '';
+    let model = CONFIG.agent.primaryModel;
+    let chart = null;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line) continue;
+            let event;
+            try {
+                event = JSON.parse(line);
+            } catch {
+                continue;
+            }
+
+            if (event.type === 'status') {
+                setAgentStatus(event.message || 'Working');
+            } else if (event.type === 'delta') {
+                content += event.content || '';
+            } else if (event.type === 'final') {
+                model = event.model || model;
+                chart = event.chart || null;
+            } else if (event.type === 'error') {
+                throw new Error(event.message || 'Agent failed.');
+            }
+        }
+    }
+
+    if (!content.trim()) {
         throw new Error('Netlify agent returned an empty response.');
     }
 
-    return {
-        content,
-        model: payload?.model || CONFIG.agent.primaryModel,
-        chart: payload?.chart || null
-    };
+    return { content: content.trim(), model, chart };
 }
 
 async function warmContextCaches() {
@@ -1442,9 +1477,21 @@ async function sendChat() {
     const streamingMsgId = 'stream-' + Date.now();
     addStreamingMessage(streamingMsgId);
     setAgentStatus(`Consulting ${CONFIG.agent.primaryModel}`);
+    let ticker = null;
 
     try {
-        const result = await sendChatViaAgent({ msg, history });
+        const resultPromise = sendChatViaAgent({ msg, history });
+        ticker = window.setInterval(() => {
+            const el = document.getElementById(streamingMsgId);
+            if (!el) return;
+            const contentEl = el.querySelector('.msg-content');
+            if (!contentEl) return;
+            const statusText = document.querySelector('.chat-status')?.textContent || 'Working';
+            contentEl.innerHTML = `<em>${escapeHtml(statusText)}...</em><span class="streaming-cursor">|</span>`;
+        }, 150);
+        const result = await resultPromise;
+        window.clearInterval(ticker);
+        ticker = null;
         if (result?.content) {
             if (result.chart) {
                 removeStreamingMessage(streamingMsgId);
@@ -1462,6 +1509,7 @@ async function sendChat() {
 
         throw new Error('Empty model response');
     } catch (agentError) {
+        if (ticker) window.clearInterval(ticker);
         console.error('Agent error:', agentError);
         setAgentStatus('Agent unavailable');
         removeStreamingMessage(streamingMsgId);

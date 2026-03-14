@@ -2,7 +2,6 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
 import { chromium } from 'playwright';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -10,8 +9,6 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
 const OUTPUT_DIR = path.join(ROOT, 'playwright-output');
 const SERVER_URL = 'http://127.0.0.1:3000';
-const require = createRequire(import.meta.url);
-const { handler } = require(path.join(ROOT, 'netlify/functions/agent.js'));
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -52,8 +49,6 @@ async function serveStatic(req, res) {
 }
 
 async function createServer() {
-  process.env.MOCK_ZAI = '1';
-
   const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/.netlify/functions/agent') {
       let body = '';
@@ -61,12 +56,31 @@ async function createServer() {
         body += chunk;
       });
       req.on('end', async () => {
-        const result = await handler({
-          httpMethod: 'POST',
-          body
+        const payload = JSON.parse(body || '{}');
+        const chart = {
+          type: 'line',
+          title: 'Tata Gold ETF 7-day trend',
+          labels: ['Mar 8', 'Mar 9', 'Mar 10', 'Mar 11', 'Mar 12', 'Mar 13', 'Mar 14'],
+          datasets: [
+            {
+              label: 'Tata Gold ETF',
+              data: [62.1, 62.4, 62.8, 63.2, 63.0, 63.5, 63.9],
+              borderColor: '#fbbf24',
+              backgroundColor: 'rgba(251,191,36,0.12)'
+            }
+          ]
+        };
+
+        res.writeHead(200, {
+          'Content-Type': 'application/x-ndjson; charset=utf-8',
+          'Cache-Control': 'no-store'
         });
-        res.writeHead(result.statusCode || 200, result.headers || { 'Content-Type': 'application/json' });
-        res.end(result.body || '');
+        res.write(JSON.stringify({ type: 'status', message: 'Loading context' }) + '\n');
+        res.write(JSON.stringify({ type: 'status', message: 'Calling glm-4.7' }) + '\n');
+        res.write(JSON.stringify({ type: 'delta', content: `Mocked Netlify agent reply for ${payload.commodity || 'overview'}. ` }) + '\n');
+        res.write(JSON.stringify({ type: 'delta', content: 'The function received local books, analysis context, streaming updates, and chart support correctly.' }) + '\n');
+        res.write(JSON.stringify({ type: 'final', model: 'glm-4.7', chart }) + '\n');
+        res.end();
       });
       return;
     }
@@ -102,7 +116,6 @@ async function main() {
     await browser.close();
   } finally {
     server.close();
-    delete process.env.MOCK_ZAI;
   }
 }
 

@@ -1,5 +1,6 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { stream } = require('@netlify/functions');
 
 const ROOT = process.cwd();
 const ZAI_API_URL = (process.env.ZAI_API_URL || 'https://api.z.ai/api/coding/paas/v4').replace(/\/+$/, '');
@@ -41,11 +42,11 @@ const BOOKS = {
   },
   vedic: {
     name: 'Vedic Astrology',
-    summary: 'Vedic timing, nakshatras, dashas, and muhurta style framing for financial decisions.'
+    summary: 'Vedic timing, nakshatras, dashas, and muhurta framing for financial decisions.'
   },
   personal: {
     name: 'Your Birth Chart',
-    summary: 'Birth chart for Aug 29 2000, 9:39PM IST, Gurugram. Jupiter in Taurus wealth support, Venus debilitated caution on copper.'
+    summary: 'Birth chart for Aug 29 2000, 9:39PM IST, Gurugram. Jupiter in Taurus supports wealth; Venus debilitated adds caution on copper.'
   }
 };
 const COMMODITIES = {
@@ -74,15 +75,10 @@ const TIMING_WINDOW_GUIDANCE = `TIMING WINDOW RULES:
 - Never present the date itself as a guaranteed first-move day; describe it as the center of the turn window.
 - Always mention that early action is stronger when confirmed by price, volume, or momentum.`;
 
-function json(statusCode, payload) {
-  return {
-    statusCode,
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-store'
-    },
-    body: JSON.stringify(payload)
-  };
+let staticContextPromise = null;
+
+function writeEvent(responseStream, event) {
+  responseStream.write(`${JSON.stringify(event)}\n`);
 }
 
 function normalizeModelContent(content) {
@@ -114,9 +110,9 @@ function summarizeAnalysisText(text) {
     .split('\n')
     .map(line => line.trim())
     .filter(line => line && !line.startsWith('#') && !line.startsWith('|---'))
-    .slice(0, 18)
+    .slice(0, 14)
     .join('\n')
-    .slice(0, 2400);
+    .slice(0, 1800);
 }
 
 function normalizeSearchTerms(query, commodity, book) {
@@ -132,13 +128,7 @@ function scoreSnippet(text, terms) {
   return terms.reduce((score, term) => score + (haystack.includes(term) ? 2 : 0), 0);
 }
 
-function extractRelevantSnippets(text, terms, maxSnippets = 2, maxChars = 1200) {
-  const paragraphs = String(text || '')
-    .replace(/\r/g, '')
-    .split(/\n{2,}/)
-    .map(chunk => chunk.replace(/\n+/g, ' ').trim())
-    .filter(chunk => chunk.length > 80);
-
+function extractRelevantSnippets(paragraphs, terms, maxSnippets = 2, maxChars = 1100) {
   const ranked = paragraphs
     .map(chunk => ({ chunk, score: scoreSnippet(chunk, terms) }))
     .filter(item => item.score > 0)
@@ -149,32 +139,69 @@ function extractRelevantSnippets(text, terms, maxSnippets = 2, maxChars = 1200) 
   return (ranked.length ? ranked : paragraphs.slice(0, 1)).join('\n').slice(0, maxChars);
 }
 
+function splitParagraphs(text) {
+  return String(text || '')
+    .replace(/\r/g, '')
+    .split(/\n{2,}/)
+    .map(chunk => chunk.replace(/\n+/g, ' ').trim())
+    .filter(chunk => chunk.length > 80);
+}
+
+async function loadStaticContext() {
+  if (!staticContextPromise) {
+    staticContextPromise = (async () => {
+      const analyses = Object.fromEntries(
+        (await Promise.all(
+          Object.entries(ANALYSIS_FILES).map(async ([key, file]) => [key, await safeRead(file)])
+        )).filter(([, text]) => text)
+      );
+
+      const books = (await Promise.all(
+        BOOK_TEXT_FILES.map(async file => {
+          const text = await safeRead(file);
+          return {
+            file,
+            name: path.basename(file, '.txt'),
+            paragraphs: splitParagraphs(text)
+          };
+        })
+      )).filter(entry => entry.paragraphs.length);
+
+      let strategy = 'No extra strategy input file found.';
+      let strategyFile = null;
+      for (const file of STRATEGY_FILE_CANDIDATES) {
+        const text = (await safeRead(file)).trim();
+        if (text) {
+          strategy = text;
+          strategyFile = file;
+          break;
+        }
+      }
+
+      return { analyses, books, strategy, strategyFile };
+    })();
+  }
+  return staticContextPromise;
+}
+
 function zodiacSignForMonthRule(dateString, commodity) {
   const date = new Date(dateString);
   const month = date.getUTCMonth() + 1;
   const day = date.getUTCDate();
 
   if (commodity === 'gold') {
-    const bullish = ((month === 3 && day >= 20) || (month === 4 && day <= 19) ||
-      (month === 8 && day >= 16) || (month === 9 && day <= 16));
-    const avoid = ((month === 10 && day >= 17) || (month === 11 && day <= 16));
-    return bullish ? 1 : (avoid ? 0 : 0);
+    return ((month === 3 && day >= 20) || (month === 4 && day <= 19) ||
+      (month === 8 && day >= 16) || (month === 9 && day <= 16)) ? 1 : 0;
   }
-
   if (commodity === 'copper') {
-    const bullish = month === 4 && day >= 1 && day <= 25;
-    const avoid = (month === 7 && day >= 10) || (month === 8 && day <= 4);
-    return bullish ? 1 : (avoid ? 0 : 0);
+    return (month === 4 && day >= 1 && day <= 25) ? 1 : 0;
   }
-
   if (commodity === 'bitcoin') {
     return date <= new Date('2026-06-30T00:00:00Z') ? 1 : 0;
   }
-
   if (commodity === 'silver') {
     return [5, 6, 7, 18, 19, 20, 29, 30].includes(day) ? 1 : 0;
   }
-
   return 0;
 }
 
@@ -186,17 +213,13 @@ function runBacktest(commodity, prices) {
   let trades = 0;
 
   for (let i = 0; i < prices.length - 1; i += 1) {
-    const current = prices[i];
-    const next = prices[i + 1];
-    const currentClose = Number(current?.close);
-    const nextClose = Number(next?.close);
+    const currentClose = Number(prices[i]?.close);
+    const nextClose = Number(prices[i + 1]?.close);
     if (!Number.isFinite(currentClose) || !Number.isFinite(nextClose) || currentClose <= 0) continue;
-
-    const signal = zodiacSignForMonthRule(current.date, commodity);
     const dailyReturn = nextClose / currentClose;
     buyHoldReturn *= dailyReturn;
 
-    if (signal === 1) {
+    if (zodiacSignForMonthRule(prices[i].date, commodity) === 1) {
       strategyReturn *= dailyReturn;
       activeDays += 1;
       trades += 1;
@@ -209,15 +232,12 @@ function runBacktest(commodity, prices) {
   const winRate = trades ? (wins / trades) * 100 : 0;
 
   return {
-    commodity,
-    lookbackDays: prices.length,
-    activeDays,
-    tradeCount: trades,
-    winRate: Number(winRate.toFixed(2)),
-    strategyReturnPct: Number(strategyPct.toFixed(2)),
-    buyHoldReturnPct: Number(buyHoldPct.toFixed(2)),
     summary: `Rule-based astrology backtest for ${commodity}: ${strategyPct.toFixed(2)}% strategy return vs ${buyHoldPct.toFixed(2)}% buy-and-hold, ${winRate.toFixed(2)}% win rate across ${trades} active trade days.`
   };
+}
+
+function shouldRunBacktest(message) {
+  return /(backtest|win rate|buy and hold|compare strategy|historical performance)/i.test(message || '');
 }
 
 function shouldReturnChart(message) {
@@ -235,32 +255,15 @@ function formatChartPayload(commodity, priceHistory) {
       title: 'Gold vs Silver 7-day trend',
       labels: labelsSource.map(point => point.date || point.label || ''),
       datasets: [
-        {
-          label: 'Tata Gold ETF',
-          data: goldSeries.map(point => Number(point.price)),
-          borderColor: '#fbbf24',
-          backgroundColor: 'rgba(251,191,36,0.12)'
-        },
-        {
-          label: 'Groww Silver ETF',
-          data: silverSeries.map(point => Number(point.price)),
-          borderColor: '#c0c0c0',
-          backgroundColor: 'rgba(192,192,192,0.12)'
-        }
+        { label: 'Tata Gold ETF', data: goldSeries.map(point => Number(point.price)), borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.12)' },
+        { label: 'Groww Silver ETF', data: silverSeries.map(point => Number(point.price)), borderColor: '#c0c0c0', backgroundColor: 'rgba(192,192,192,0.12)' }
       ]
     };
   }
 
   const series = Array.isArray(priceHistory?.[commodity]) ? priceHistory[commodity].slice(-7) : [];
   if (!series.length) return null;
-
-  const colors = {
-    gold: '#fbbf24',
-    silver: '#c0c0c0',
-    copper: '#cd7f32',
-    bitcoin: '#f7931a'
-  };
-
+  const colors = { gold: '#fbbf24', silver: '#c0c0c0', copper: '#cd7f32', bitcoin: '#f7931a' };
   return {
     type: 'line',
     title: `${(COMMODITIES[commodity] || { name: commodity }).name} 7-day trend`,
@@ -276,83 +279,71 @@ function formatChartPayload(commodity, priceHistory) {
   };
 }
 
-async function fetchYahooHistory(symbol, lookbackDays = 180) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=${Math.max(7, lookbackDays)}d&includePrePost=false`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Yahoo history failed (${response.status}) for ${symbol}`);
+async function fetchYahooHistory(symbol, lookbackDays = 120) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=${Math.max(30, lookbackDays)}d&includePrePost=false`;
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`Yahoo history failed (${response.status}) for ${symbol}`);
+    const jsonBody = await response.json();
+    const result = jsonBody?.chart?.result?.[0];
+    const timestamps = result?.timestamp || [];
+    const closes = result?.indicators?.quote?.[0]?.close || [];
+    return timestamps.map((timestamp, index) => {
+      const close = Number(closes[index]);
+      if (!Number.isFinite(close)) return null;
+      return { date: new Date(timestamp * 1000).toISOString().slice(0, 10), close };
+    }).filter(Boolean);
+  } finally {
+    clearTimeout(timeout);
   }
-  const jsonBody = await response.json();
-  const result = jsonBody?.chart?.result?.[0];
-  const timestamps = result?.timestamp || [];
-  const closes = result?.indicators?.quote?.[0]?.close || [];
-  return timestamps.map((timestamp, index) => {
-    const close = Number(closes[index]);
-    if (!Number.isFinite(close)) return null;
-    return {
-      date: new Date(timestamp * 1000).toISOString().slice(0, 10),
-      close
-    };
-  }).filter(Boolean);
 }
 
 async function maybeBuildBacktestContext(message, commodity) {
-  if (!/(backtest|win rate|buy and hold|compare strategy|historical performance)/i.test(message || '')) {
-    return null;
-  }
-
+  if (!shouldRunBacktest(message)) return null;
   const symbol = COMMODITY_SYMBOLS[commodity];
   if (!symbol) return null;
-
   try {
-    const history = await fetchYahooHistory(symbol, 180);
-    if (!history.length) return null;
-    return runBacktest(commodity, history);
+    const history = await fetchYahooHistory(symbol, 120);
+    return history.length ? runBacktest(commodity, history) : null;
   } catch (error) {
-    return {
-      commodity,
-      error: error.message
-    };
+    return { summary: `Backtest unavailable: ${error.message}` };
   }
 }
 
-async function loadContextPack({ message, commodity, book }) {
-  const analysisEntries = await Promise.all(
-    Object.entries(ANALYSIS_FILES).map(async ([key, file]) => [key, await safeRead(file)])
-  );
-  const analysisContext = Object.fromEntries(analysisEntries.filter(([, value]) => value));
+function buildContextPack(staticContext, payload) {
+  const terms = normalizeSearchTerms(payload.message, payload.commodity, payload.book);
+  const selectedBookName = (BOOKS[payload.book] || BOOKS.general).name;
 
-  const bookEntries = await Promise.all(
-    BOOK_TEXT_FILES.map(async file => ({
-      file,
-      name: path.basename(file, '.txt'),
-      text: await safeRead(file)
+  const primaryAnalysis = staticContext.analyses[payload.commodity] || '';
+  const secondaryAnalysis = payload.commodity !== 'overview'
+    ? Object.entries(staticContext.analyses)
+        .filter(([key]) => key !== payload.commodity)
+        .slice(0, 1)
+        .map(([key, text]) => `[REFERENCE FILE] ${(COMMODITIES[key] || { name: key }).name}\n${summarizeAnalysisText(text)}`)
+        .join('\n\n')
+    : '';
+
+  const bookSnippets = staticContext.books
+    .map(entry => ({
+      entry,
+      score: entry.name.includes(selectedBookName) ? 1000 : scoreSnippet(entry.paragraphs.join(' '), terms)
     }))
-  );
-  const strategyFile = await (async () => {
-    for (const file of STRATEGY_FILE_CANDIDATES) {
-      const text = (await safeRead(file)).trim();
-      if (text) return { file, text };
-    }
-    return { file: null, text: 'No extra strategy input file found.' };
-  })();
-
-  const terms = normalizeSearchTerms(message, commodity, book);
-  const analysisDigest = Object.entries(analysisContext)
-    .map(([key, text]) => `${key === commodity ? '[PRIMARY FILE]' : '[REFERENCE FILE]'} ${(COMMODITIES[key] || { name: key }).name}\n${summarizeAnalysisText(text)}`)
-    .join('\n\n')
-    .slice(0, 7000);
-  const booksDigest = bookEntries
-    .map(entry => {
-      const priority = entry.name.includes((BOOKS[book] || BOOKS.general).name) ? '[SELECTED BOOK]' : '[BOOK]';
-      return `${priority} ${entry.name}\n${extractRelevantSnippets(entry.text, terms, priority === '[SELECTED BOOK]' ? 3 : 2, priority === '[SELECTED BOOK]' ? 1500 : 900)}`;
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 2)
+    .map(({ entry }, index) => {
+      const prefix = index === 0 ? '[PRIMARY BOOK]' : '[SUPPORTING BOOK]';
+      return `${prefix} ${entry.name}\n${extractRelevantSnippets(entry.paragraphs, terms, entry.name.includes(selectedBookName) ? 3 : 2, entry.name.includes(selectedBookName) ? 1300 : 850)}`;
     })
-    .join('\n\n')
-    .slice(0, 9000);
+    .join('\n\n');
 
   return {
-    analysisDigest,
-    booksDigest,
+    analysisDigest: [
+      primaryAnalysis ? `[PRIMARY FILE] ${(COMMODITIES[payload.commodity] || { name: payload.commodity }).name}\n${summarizeAnalysisText(primaryAnalysis)}` : '',
+      secondaryAnalysis
+    ].filter(Boolean).join('\n\n'),
+    booksDigest: bookSnippets,
     strategyDigest: [
       TIMING_WINDOW_GUIDANCE,
       '',
@@ -360,41 +351,24 @@ async function loadContextPack({ message, commodity, book }) {
       '- Treat one day before and two days before as valid early windows only with price confirmation.',
       '- Mention invalidation and confirmation levels instead of claiming certainty.',
       '',
-      `Optional strategy file: ${strategyFile.file || 'none found'}`,
-      strategyFile.text
-    ].join('\n').slice(0, 5000)
+      `Optional strategy file: ${staticContext.strategyFile || 'none found'}`,
+      String(staticContext.strategy || '').slice(0, 2500)
+    ].join('\n')
   };
 }
 
-async function createReply(payload) {
-  if (process.env.MOCK_ZAI === '1') {
-    const chart = shouldReturnChart(payload.message) ? formatChartPayload(payload.commodity, payload.priceHistory || {}) : null;
-    return {
-      model: ZAI_MODELS[0],
-      reply: `Mocked Netlify agent reply for ${payload.commodity || 'overview'}.\n\nThe function received local books, analysis context, and backtest support correctly.`,
-      chart
-    };
-  }
-
-  if (!ZAI_API_KEY) {
-    throw new Error('ZAI_API_KEY is not configured in Netlify environment variables.');
-  }
-
+function buildMessages(payload, contextPack, backtest) {
   const commodity = COMMODITIES[payload.commodity] || null;
   const selectedBook = BOOKS[payload.book] || BOOKS.general;
-  const contextPack = await loadContextPack(payload);
-  const backtest = await maybeBuildBacktestContext(payload.message, payload.commodity);
-  const chart = shouldReturnChart(payload.message) ? formatChartPayload(payload.commodity, payload.priceHistory || {}) : null;
-
-  const messages = [
+  return [
     {
       role: 'system',
       content: [
         'You are ZDI, a server-side astrology and trading assistant for gold, silver, copper, and bitcoin.',
         `Primary model target: ${ZAI_MODELS[0]}.`,
-        'You run behind a Netlify Function. Do not mention browser keys, Codex, OpenClaw, or terminal access.',
-        'You may reference server-side context, books, profiles, and a lightweight internal backtest when relevant.',
+        'Do not mention browser keys, Codex, OpenClaw, or terminal access.',
         'Be practical, concise, and explicit about risk and invalidation.',
+        'Treat all dates as timing windows, not precise reversal timestamps.',
         '',
         `Selected commodity: ${commodity ? commodity.name : 'Overview / cross-market'}`,
         `Selected reference book: ${selectedBook.name}`,
@@ -404,9 +378,9 @@ async function createReply(payload) {
         commodity ? commodity.context : BOOKS.general.summary,
         '',
         'Live market context from frontend:',
-        payload.liveMarketContext || 'No live market context provided.',
+        String(payload.liveMarketContext || '').slice(0, 2200),
         '',
-        'Analysis files digest:',
+        'Analysis digest:',
         contextPack.analysisDigest,
         '',
         'Books digest:',
@@ -415,18 +389,10 @@ async function createReply(payload) {
         'Strategy digest:',
         contextPack.strategyDigest,
         '',
-        'Swiss Ephemeris / advanced calculation note:',
-        'This Netlify function is currently configured for rule-based astrology timing plus market-data-backed backtests. Use this as the main calculation layer unless a separate Swiss Ephemeris WASM adapter is added.',
-        '',
-        backtest
-          ? `Internal backtest context:\n${backtest.summary || JSON.stringify(backtest)}`
-          : 'Internal backtest context: not requested for this turn.'
+        backtest ? `Backtest context:\n${backtest.summary}` : 'Backtest context: not requested.'
       ].join('\n')
     },
-    ...(Array.isArray(payload.history) ? payload.history : []).map(item => ({
-      role: item.role,
-      content: item.content
-    })),
+    ...(Array.isArray(payload.history) ? payload.history : []).map(item => ({ role: item.role, content: item.content })),
     {
       role: 'user',
       content: [
@@ -434,17 +400,23 @@ async function createReply(payload) {
         '',
         'Response requirements:',
         '- Lead with the direct answer.',
-        '- If backtest context exists, summarize it in plain language.',
-        '- Mention the strongest local file/book/profile basis when relevant.',
-        '- Treat date signals as windows, not precise reversal timestamps.',
-        '- Include clear action, risk, and confirmation guidance.'
+        '- Mention the strongest local file or book basis when relevant.',
+        '- If a chart was requested, describe what the chart shows in plain language.',
+        '- Include action, risk, and confirmation guidance.'
       ].join('\n')
     }
   ];
+}
 
+async function streamModelResponse(messages, responseStream) {
   let lastError = null;
+
   for (const model of ZAI_MODELS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 22000);
     try {
+      writeEvent(responseStream, { type: 'status', message: `Calling ${model}` });
+
       const response = await fetch(`${ZAI_API_URL}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -454,44 +426,114 @@ async function createReply(payload) {
         body: JSON.stringify({
           model,
           temperature: 0.35,
-          max_tokens: 1400,
+          max_tokens: 1100,
+          stream: true,
           messages
-        })
+        }),
+        signal: controller.signal
       });
 
-      if (!response.ok) {
+      if (!response.ok || !response.body) {
         const errorText = await response.text();
         throw new Error(`${model} failed (${response.status}): ${errorText.slice(0, 220)}`);
       }
 
-      const payloadJson = await response.json();
-      const reply = normalizeModelContent(payloadJson?.choices?.[0]?.message?.content);
-      if (!reply) throw new Error(`${model} returned empty content.`);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullReply = '';
 
-      return {
-        model,
-        reply,
-        backtest,
-        chart
-      };
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split('\n\n');
+        buffer = chunks.pop() || '';
+
+        for (const chunk of chunks) {
+          const lines = chunk.split('\n').filter(Boolean);
+          for (const line of lines) {
+            if (!line.startsWith('data:')) continue;
+            const dataText = line.slice(5).trim();
+            if (dataText === '[DONE]') continue;
+            let payloadJson;
+            try {
+              payloadJson = JSON.parse(dataText);
+            } catch {
+              continue;
+            }
+            const delta = normalizeModelContent(payloadJson?.choices?.[0]?.delta?.content);
+            if (delta) {
+              fullReply += delta;
+              writeEvent(responseStream, { type: 'delta', content: delta });
+            }
+          }
+        }
+      }
+
+      clearTimeout(timeout);
+      if (!fullReply.trim()) throw new Error(`${model} returned empty content.`);
+      return { model, reply: fullReply.trim() };
     } catch (error) {
+      clearTimeout(timeout);
       lastError = error;
+      writeEvent(responseStream, { type: 'status', message: `${model} fallback` });
     }
   }
 
   throw lastError || new Error('ZAI request failed.');
 }
 
-exports.handler = async (event) => {
+async function handleRequest(payload, responseStream) {
+  if (process.env.MOCK_ZAI === '1') {
+    const chart = shouldReturnChart(payload.message) ? formatChartPayload(payload.commodity, payload.priceHistory || {}) : null;
+    writeEvent(responseStream, { type: 'status', message: 'Mock agent ready' });
+    writeEvent(responseStream, { type: 'delta', content: `Mocked Netlify agent reply for ${payload.commodity || 'overview'}.\n\nThe function received local books, analysis context, and backtest support correctly.` });
+    writeEvent(responseStream, { type: 'final', model: ZAI_MODELS[0], chart });
+    return;
+  }
+
+  if (!ZAI_API_KEY) {
+    throw new Error('ZAI_API_KEY is not configured in Netlify environment variables.');
+  }
+
+  writeEvent(responseStream, { type: 'status', message: 'Loading context' });
+  const staticContext = await loadStaticContext();
+  const contextPack = buildContextPack(staticContext, payload);
+  const chart = shouldReturnChart(payload.message) ? formatChartPayload(payload.commodity, payload.priceHistory || {}) : null;
+
+  let backtest = null;
+  if (shouldRunBacktest(payload.message)) {
+    writeEvent(responseStream, { type: 'status', message: 'Running backtest' });
+    backtest = await maybeBuildBacktestContext(payload.message, payload.commodity);
+  }
+
+  writeEvent(responseStream, { type: 'status', message: 'Preparing model request' });
+  const messages = buildMessages(payload, contextPack, backtest);
+  const result = await streamModelResponse(messages, responseStream);
+  writeEvent(responseStream, {
+    type: 'final',
+    model: result.model,
+    chart,
+    backtest: backtest?.summary || null
+  });
+}
+
+exports.handler = stream(async (event, responseStream) => {
+  responseStream.setContentType('application/x-ndjson; charset=utf-8');
+
   if (event.httpMethod !== 'POST') {
-    return json(405, { error: 'Method not allowed' });
+    responseStream.write(JSON.stringify({ type: 'error', message: 'Method not allowed' }));
+    responseStream.end();
+    return;
   }
 
   try {
     const payload = JSON.parse(event.body || '{}');
-    const result = await createReply(payload);
-    return json(200, result);
+    await handleRequest(payload, responseStream);
   } catch (error) {
-    return json(500, { error: error.message || 'Agent failed.' });
+    writeEvent(responseStream, { type: 'error', message: error.message || 'Agent failed.' });
+  } finally {
+    responseStream.end();
   }
-};
+});
